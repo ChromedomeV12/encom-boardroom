@@ -27,7 +27,6 @@ var esPath = "/events.js";
 if(window._esPath){
     esPath = window._esPath;
 }
-var es = new EventSource(esPath);
 var listener = function (event) {
     var div = document.createElement("div");
     var type = event.type;
@@ -41,9 +40,12 @@ var listener = function (event) {
         }
     }
 };
-es.addEventListener("open", listener);
-es.addEventListener("message", listener);
-es.addEventListener("error", listener);
+if(!window.BLOG_POSTS){
+    var es = new EventSource(esPath);
+    es.addEventListener("open", listener);
+    es.addEventListener("message", listener);
+    es.addEventListener("error", listener);
+}
 
 
 var onSwitch = function(view){
@@ -58,7 +60,18 @@ var onSwitch = function(view){
         duration: 600, 
         easing: "easeInOutBack"});
 
-    if(view === "github"){
+    if(view === "blog"){
+
+        screensaver.text("BLOG");
+        LightTable.hide();
+        Boardroom.init("blog", window.BLOG_POSTS || [], window.BLOG_LAUNCH_MODE || "featured");
+
+        setTimeout(function(){
+            active = "br";
+            Boardroom.show();
+        }, 3000)
+
+    } else if(view === "github"){
 
         screensaver.text("GITHUB");
         LightTable.hide();

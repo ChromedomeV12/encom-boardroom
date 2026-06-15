@@ -35,14 +35,76 @@ var boardroomActive = false,
     currentPics = [],
     lastPicDate = Date.now(),
     streamType,
+    blogMode,
     readmeContainer;
 
 sliderHeads = {};
 var Boardroom = {};
 
-Boardroom.init = function(_streamType, data){
+function createBlogHistory(posts) {
+    var countsByDate = {};
+    posts.forEach(function(post){
+        var date = post.date || "unknown";
+        countsByDate[date] = (countsByDate[date] || 0) + 1;
+    });
+
+    return Object.keys(countsByDate).sort().map(function(date, index){
+        return {
+            year: parseInt(date.slice(0, 4), 10) || 2014,
+            month: parseInt(date.slice(5, 7), 10) || 1,
+            day: parseInt(date.slice(8, 10), 10) || index + 1,
+            events: countsByDate[date]
+        };
+    });
+}
+
+function escapeHtml(value) {
+    return String(value || "").replace(/[&<>"']/g, function(char){
+        return {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        }[char];
+    });
+}
+
+function renderBlogInteractions() {
+    if(streamType !== "blog" || !interactionContainer || !Boardroom.posts.length){
+        return;
+    }
+
+    var posts = Boardroom.posts.slice();
+    if(blogMode === "featured"){
+        posts = posts.filter(function(post){ return post.featured; });
+        if(!posts.length){
+            posts = Boardroom.posts.slice(0, 1);
+        }
+    } else if(blogMode === "archive"){
+        posts.sort(function(left, right){
+            return new Date(left.date) - new Date(right.date);
+        });
+    }
+
+    interactionContainer.empty();
+    posts.forEach(function(post){
+        interactionContainer.append(
+            '<ul class="interaction-data blog-interaction" data-post-slug="' + escapeHtml(post.slug) + '">' +
+                '<li class="interaction-username">' + escapeHtml(post.category || "post") + '</li>' +
+                '<li class="interaction-title">' + escapeHtml(post.title) + '</li>' +
+                '<li class="interaction-type">' + escapeHtml((post.tags || []).join(", ")) + '</li>' +
+                '<li class="interaction-size">' + escapeHtml(post.readTime || "?") + 'm</li>' +
+                '<li class="interaction-popularity">' + (post.featured ? "featured" : "archive") + '</li>' +
+            '</ul>'
+        );
+    });
+}
+
+Boardroom.init = function(_streamType, data, _blogMode){
 
     streamType = _streamType;
+    blogMode = _blogMode || "featured";
     blinkies = $('.blinky');
     mediaBoxes = $('.media-box .user-pic');
 
@@ -56,7 +118,8 @@ Boardroom.init = function(_streamType, data){
 
     readmeContainer = $("#boardroom-readme-" + _streamType);
 
-    Boardroom.data = data;
+    Boardroom.posts = streamType === "blog" ? (data || []) : [];
+    Boardroom.data = streamType === "blog" ? createBlogHistory(Boardroom.posts) : data;
 
 
     $("#fullscreen-link").click(function(e){
@@ -101,17 +164,28 @@ Boardroom.init = function(_streamType, data){
         unknown: {count: 10, ref: $("#location-area-unknown")}
     };
 
-    $("#user-interaction-header").text(streamType.toUpperCase() + " LIVE DATA FEED");
-    $("#globalization-header").text(streamType.toUpperCase() + " GLOBALIZATION");
-    $("#growth-header").text(streamType.toUpperCase() + " HISTORIC PERFORMANCE");
-    $("#media-header").text(streamType.toUpperCase() + " USERS");
+    if(streamType === "blog"){
+        $("#user-interaction-header").text(("OBSIDIAN " + blogMode + " FEED").toUpperCase());
+        $("#globalization-header").text("BLOG GLOBALIZATION");
+        $("#growth-header").text("READING PERFORMANCE");
+        $("#media-header").text("POST SNAPSHOTS");
+        $("#timer-header").text("TIME SINCE ARCHIVE BOOT");
+    } else {
+        $("#user-interaction-header").text(streamType.toUpperCase() + " LIVE DATA FEED");
+        $("#globalization-header").text(streamType.toUpperCase() + " GLOBALIZATION");
+        $("#growth-header").text(streamType.toUpperCase() + " HISTORIC PERFORMANCE");
+        $("#media-header").text(streamType.toUpperCase() + " USERS");
+    }
 
     $("#ticker-text").text(streamType.toUpperCase());
     if(streamType.length > 6){
         $("#ticker-text").css("font-size", "12pt");
     }
 
-    if(data){
+    if(streamType === "blog"){
+        $("#ticker-value").text(Boardroom.posts.length);
+        $("#ticker-ytd").text("Posts");
+    } else if(data){
         $("#ticker-value").text(formatYTD(data[0].events, data[data.length-1].events));
     }
 
@@ -133,6 +207,8 @@ Boardroom.init = function(_streamType, data){
     for(var i = 0; i< 50; i++){
         interactionContainer.append('<ul class="interaction-data"></ul>');
     }
+
+    renderBlogInteractions();
 };
 
 Boardroom.show = function(cb){

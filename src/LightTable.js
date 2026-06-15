@@ -36,28 +36,31 @@ LightTable.init = function(_hideFn){
     /* set events */
 
     $("#lt-launch-github").click(function(){
+        window.BLOG_LAUNCH_MODE = "featured";
         $(this).find(".folder-big").css("background-color", "#fff");
-        simulateCommand("|cd github$");
+        simulateCommand("|cd blog$");
         simulateCommand("ls$");
-        simulateCommand("run github.exe$");
+        simulateCommand("run blog.exe$");
         $(document).off();
         $(".folder-container").off();
     });
 
     $("#lt-launch-wikipedia").click(function(){
+        window.BLOG_LAUNCH_MODE = "archive";
         $(this).find(".folder-small").css("background-color", "#fff");
-        simulateCommand("|cd wikipedia$");
+        simulateCommand("|cd blog$");
         simulateCommand("ls$");
-        simulateCommand("run wikipedia.exe$");
+        simulateCommand("run blog.exe$");
         $(document).off();
         $(".folder-container").off();
     });
 
     $("#lt-launch-test").click(function(){
+        window.BLOG_LAUNCH_MODE = "latest";
         $(this).find(".folder-small").css("background-color", "#fff");
-        simulateCommand("|cd test$");
+        simulateCommand("|cd blog$");
         simulateCommand("ls$");
-        simulateCommand("run test.exe$");
+        simulateCommand("run blog.exe$");
         $(document).off();
         $(".folder-container").off();
 
@@ -544,7 +547,7 @@ function writeLs(exec){
 
     } else {
         output = [
-            '<div class="ls ls-github">github</div>',
+            '<div class="ls ls-blog">blog</div>',
             '<div class="ls ls-test">test</div>',
             '<div class="ls ls-wikipedia">wikipedia</div>',
             '<div class="ls ls-bitcoin">bitcoin</div>',
@@ -563,7 +566,20 @@ function writeLs(exec){
 function executeCommand(){
     var command = $(".command-text").last().text();
 
-    if(command == "run github.exe"){
+    if(command == "run blog.exe"){
+        if(currentDir == "blog"){
+            $(".ls-exec").addClass("ls-highlight")
+            $(".container-border").animate({opacity: 0}, 500);
+
+            setTimeout(function(){
+                hideFn("blog");
+            }, 500);
+        } else {
+            writeResponse("<span class='alert'>Error:</span> No such file");
+            writePrompt();
+        }
+
+    } else if(command == "run github.exe"){
         if(currentDir == "github"){
             $(".ls-exec").addClass("ls-highlight")
             $(".container-border").animate({opacity: 0}, 500);
@@ -603,12 +619,16 @@ function executeCommand(){
             writePrompt();
         }
 
-    } else if(command == "cd github"){
-        $(".ls-github").addClass("ls-highlight")
-        currentDir = "github";
+    } else if(command == "cd blog"){
+        $(".ls-blog").addClass("ls-highlight")
+        currentDir = "blog";
         $(".folder-label").removeClass("selected");
         $("#lt-launch-github .folder-label").addClass("selected");
-        writeResponse("Changed directory to <span class='highlight'>github</span>");
+        writeResponse("Changed directory to <span class='highlight'>blog</span>");
+        writePrompt();
+
+    } else if(command == "cd github"){
+        writeResponse("<span class='alert'>Access denied</span>");
         writePrompt();
 
     } else if(command == "cd wikipedia"){

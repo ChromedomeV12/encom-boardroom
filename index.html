@@ -4,12 +4,13 @@
     <head>
         <meta charset="utf-8">
         <meta property="og:image" content="https://www.robscanlon.com/encom-boardroom/images/screenshot.jpg" />
-        <meta property="og:description" content="A WebGL implementation of the Encom Boardroom scene in Tron: Legacy" />
-        <title>Tron: Legacy Encom Boardroom Visualization</title>
+        <meta property="og:description" content="An Obsidian-powered blog running inside an ENCOM boardroom-inspired interface." />
+        <title>ENCOM Boardroom Obsidian Blog</title>
         <link href='//fonts.googleapis.com/css?family=Inconsolata' rel='stylesheet' type='text/css'>
         <link href="css/global.css" rel="stylesheet" type="text/css" />
         <link href="css/light-table-styles.css" rel="stylesheet" type="text/css" />
         <link href="css/boardroom-styles.css" rel="stylesheet" type="text/css" />
+        <link href="css/blog.css?v=blog-fork-11" rel="stylesheet" type="text/css" />
         <link rel="canonical" href="https://www.robscanlon.com/encom-boardroom/" />
 
         <script src="js/globe-grid.js"></script>
@@ -18,9 +19,11 @@
         <!-- ref:include boardroomEsPath -->
         <!-- endref -->
 
+        <script src="js/blog-posts.js?v=blog-fork-11"></script>
         <!-- ref:js build/encom-boardroom.min.js -->
-        <script src="build/encom-boardroom.js"></script>
+        <script src="build/encom-boardroom.js?v=blog-fork-11"></script>
         <!-- endref -->
+        <script src="js/blog-adapter.js?v=blog-fork-11"></script>
 
     </head>
     <body>
@@ -732,6 +735,26 @@
 
         </div>
 
+        <div class="boardroom-readme" id="boardroom-readme-blog">
+            <div class="content">
+                <h2>
+                    OBSIDIAN BLOG STREAM INFO <span class="alt-1">.TXT</span>
+                    <em>X CLOSE</em>
+                </h2>
+                <p>
+                This boardroom stream is now wired to a publish-ready Obsidian folder. Markdown notes are compiled into static post data, then rendered as ENCOM-style article signals.
+                </p>
+                <p>
+                The interface keeps the original globe, telemetry, keyboard, and transition language, but long-form reading is handled by a calmer article pane with off-white copy and reduced glow.
+                </p>
+                <p>
+                The current importer supports frontmatter, tags, wikilinks, callouts, local embeds, asset copying, and a generated backlink index. Missing linked notes or embedded assets are caught during local validation.
+                </p>
+                <p>
+                Next build step: replace the placeholder boardroom feeds with real post rows, archive telemetry, tag modes, and click-through article reading from the dashboard itself.
+                </p>
+            </div>
+        </div>
         <div class="boardroom-readme" id="boardroom-readme-github">
             <div class="content">
                 <h2>

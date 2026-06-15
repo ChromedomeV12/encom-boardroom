@@ -79109,14 +79109,76 @@ var boardroomActive = false,
     currentPics = [],
     lastPicDate = Date.now(),
     streamType,
+    blogMode,
     readmeContainer;
 
 sliderHeads = {};
 var Boardroom = {};
 
-Boardroom.init = function(_streamType, data){
+function createBlogHistory(posts) {
+    var countsByDate = {};
+    posts.forEach(function(post){
+        var date = post.date || "unknown";
+        countsByDate[date] = (countsByDate[date] || 0) + 1;
+    });
+
+    return Object.keys(countsByDate).sort().map(function(date, index){
+        return {
+            year: parseInt(date.slice(0, 4), 10) || 2014,
+            month: parseInt(date.slice(5, 7), 10) || 1,
+            day: parseInt(date.slice(8, 10), 10) || index + 1,
+            events: countsByDate[date]
+        };
+    });
+}
+
+function escapeHtml(value) {
+    return String(value || "").replace(/[&<>"']/g, function(char){
+        return {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        }[char];
+    });
+}
+
+function renderBlogInteractions() {
+    if(streamType !== "blog" || !interactionContainer || !Boardroom.posts.length){
+        return;
+    }
+
+    var posts = Boardroom.posts.slice();
+    if(blogMode === "featured"){
+        posts = posts.filter(function(post){ return post.featured; });
+        if(!posts.length){
+            posts = Boardroom.posts.slice(0, 1);
+        }
+    } else if(blogMode === "archive"){
+        posts.sort(function(left, right){
+            return new Date(left.date) - new Date(right.date);
+        });
+    }
+
+    interactionContainer.empty();
+    posts.forEach(function(post){
+        interactionContainer.append(
+            '<ul class="interaction-data blog-interaction" data-post-slug="' + escapeHtml(post.slug) + '">' +
+                '<li class="interaction-username">' + escapeHtml(post.category || "post") + '</li>' +
+                '<li class="interaction-title">' + escapeHtml(post.title) + '</li>' +
+                '<li class="interaction-type">' + escapeHtml((post.tags || []).join(", ")) + '</li>' +
+                '<li class="interaction-size">' + escapeHtml(post.readTime || "?") + 'm</li>' +
+                '<li class="interaction-popularity">' + (post.featured ? "featured" : "archive") + '</li>' +
+            '</ul>'
+        );
+    });
+}
+
+Boardroom.init = function(_streamType, data, _blogMode){
 
     streamType = _streamType;
+    blogMode = _blogMode || "featured";
     blinkies = $('.blinky');
     mediaBoxes = $('.media-box .user-pic');
 
@@ -79130,7 +79192,8 @@ Boardroom.init = function(_streamType, data){
 
     readmeContainer = $("#boardroom-readme-" + _streamType);
 
-    Boardroom.data = data;
+    Boardroom.posts = streamType === "blog" ? (data || []) : [];
+    Boardroom.data = streamType === "blog" ? createBlogHistory(Boardroom.posts) : data;
 
 
     $("#fullscreen-link").click(function(e){
@@ -79175,17 +79238,28 @@ Boardroom.init = function(_streamType, data){
         unknown: {count: 10, ref: $("#location-area-unknown")}
     };
 
-    $("#user-interaction-header").text(streamType.toUpperCase() + " LIVE DATA FEED");
-    $("#globalization-header").text(streamType.toUpperCase() + " GLOBALIZATION");
-    $("#growth-header").text(streamType.toUpperCase() + " HISTORIC PERFORMANCE");
-    $("#media-header").text(streamType.toUpperCase() + " USERS");
+    if(streamType === "blog"){
+        $("#user-interaction-header").text(("OBSIDIAN " + blogMode + " FEED").toUpperCase());
+        $("#globalization-header").text("BLOG GLOBALIZATION");
+        $("#growth-header").text("READING PERFORMANCE");
+        $("#media-header").text("POST SNAPSHOTS");
+        $("#timer-header").text("TIME SINCE ARCHIVE BOOT");
+    } else {
+        $("#user-interaction-header").text(streamType.toUpperCase() + " LIVE DATA FEED");
+        $("#globalization-header").text(streamType.toUpperCase() + " GLOBALIZATION");
+        $("#growth-header").text(streamType.toUpperCase() + " HISTORIC PERFORMANCE");
+        $("#media-header").text(streamType.toUpperCase() + " USERS");
+    }
 
     $("#ticker-text").text(streamType.toUpperCase());
     if(streamType.length > 6){
         $("#ticker-text").css("font-size", "12pt");
     }
 
-    if(data){
+    if(streamType === "blog"){
+        $("#ticker-value").text(Boardroom.posts.length);
+        $("#ticker-ytd").text("Posts");
+    } else if(data){
         $("#ticker-value").text(formatYTD(data[0].events, data[data.length-1].events));
     }
 
@@ -79207,6 +79281,8 @@ Boardroom.init = function(_streamType, data){
     for(var i = 0; i< 50; i++){
         interactionContainer.append('<ul class="interaction-data"></ul>');
     }
+
+    renderBlogInteractions();
 };
 
 Boardroom.show = function(cb){
@@ -80232,28 +80308,31 @@ LightTable.init = function(_hideFn){
     /* set events */
 
     $("#lt-launch-github").click(function(){
+        window.BLOG_LAUNCH_MODE = "featured";
         $(this).find(".folder-big").css("background-color", "#fff");
-        simulateCommand("|cd github$");
+        simulateCommand("|cd blog$");
         simulateCommand("ls$");
-        simulateCommand("run github.exe$");
+        simulateCommand("run blog.exe$");
         $(document).off();
         $(".folder-container").off();
     });
 
     $("#lt-launch-wikipedia").click(function(){
+        window.BLOG_LAUNCH_MODE = "archive";
         $(this).find(".folder-small").css("background-color", "#fff");
-        simulateCommand("|cd wikipedia$");
+        simulateCommand("|cd blog$");
         simulateCommand("ls$");
-        simulateCommand("run wikipedia.exe$");
+        simulateCommand("run blog.exe$");
         $(document).off();
         $(".folder-container").off();
     });
 
     $("#lt-launch-test").click(function(){
+        window.BLOG_LAUNCH_MODE = "latest";
         $(this).find(".folder-small").css("background-color", "#fff");
-        simulateCommand("|cd test$");
+        simulateCommand("|cd blog$");
         simulateCommand("ls$");
-        simulateCommand("run test.exe$");
+        simulateCommand("run blog.exe$");
         $(document).off();
         $(".folder-container").off();
 
@@ -80740,7 +80819,7 @@ function writeLs(exec){
 
     } else {
         output = [
-            '<div class="ls ls-github">github</div>',
+            '<div class="ls ls-blog">blog</div>',
             '<div class="ls ls-test">test</div>',
             '<div class="ls ls-wikipedia">wikipedia</div>',
             '<div class="ls ls-bitcoin">bitcoin</div>',
@@ -80759,7 +80838,20 @@ function writeLs(exec){
 function executeCommand(){
     var command = $(".command-text").last().text();
 
-    if(command == "run github.exe"){
+    if(command == "run blog.exe"){
+        if(currentDir == "blog"){
+            $(".ls-exec").addClass("ls-highlight")
+            $(".container-border").animate({opacity: 0}, 500);
+
+            setTimeout(function(){
+                hideFn("blog");
+            }, 500);
+        } else {
+            writeResponse("<span class='alert'>Error:</span> No such file");
+            writePrompt();
+        }
+
+    } else if(command == "run github.exe"){
         if(currentDir == "github"){
             $(".ls-exec").addClass("ls-highlight")
             $(".container-border").animate({opacity: 0}, 500);
@@ -80799,12 +80891,16 @@ function executeCommand(){
             writePrompt();
         }
 
-    } else if(command == "cd github"){
-        $(".ls-github").addClass("ls-highlight")
-        currentDir = "github";
+    } else if(command == "cd blog"){
+        $(".ls-blog").addClass("ls-highlight")
+        currentDir = "blog";
         $(".folder-label").removeClass("selected");
         $("#lt-launch-github .folder-label").addClass("selected");
-        writeResponse("Changed directory to <span class='highlight'>github</span>");
+        writeResponse("Changed directory to <span class='highlight'>blog</span>");
+        writePrompt();
+
+    } else if(command == "cd github"){
+        writeResponse("<span class='alert'>Access denied</span>");
         writePrompt();
 
     } else if(command == "cd wikipedia"){
@@ -82058,7 +82154,6 @@ var esPath = "/events.js";
 if(window._esPath){
     esPath = window._esPath;
 }
-var es = new EventSource(esPath);
 var listener = function (event) {
     var div = document.createElement("div");
     var type = event.type;
@@ -82072,9 +82167,12 @@ var listener = function (event) {
         }
     }
 };
-es.addEventListener("open", listener);
-es.addEventListener("message", listener);
-es.addEventListener("error", listener);
+if(!window.BLOG_POSTS){
+    var es = new EventSource(esPath);
+    es.addEventListener("open", listener);
+    es.addEventListener("message", listener);
+    es.addEventListener("error", listener);
+}
 
 
 var onSwitch = function(view){
@@ -82089,7 +82187,18 @@ var onSwitch = function(view){
         duration: 600, 
         easing: "easeInOutBack"});
 
-    if(view === "github"){
+    if(view === "blog"){
+
+        screensaver.text("BLOG");
+        LightTable.hide();
+        Boardroom.init("blog", window.BLOG_POSTS || [], window.BLOG_LAUNCH_MODE || "featured");
+
+        setTimeout(function(){
+            active = "br";
+            Boardroom.show();
+        }, 3000)
+
+    } else if(view === "github"){
 
         screensaver.text("GITHUB");
         LightTable.hide();
