@@ -160,6 +160,11 @@ assert.ok(
   'touch keyboard should remain visible in a compact mobile layout',
 );
 assert.ok(
+  mobileDeclarations('body.blog-flex #lt-container-outside').some((rule) => /position\s*:\s*absolute\b/.test(rule)),
+  'decorative light-table shell should remain overlaid and out of normal flow at narrow widths',
+);
+
+assert.ok(
   mobileDeclarations('body.blog-flex #lt-right-column').some((rule) => /overflow-x\s*:\s*auto\b/.test(rule)),
   'touch keyboard should remain reachable through a horizontally scrollable shelf at narrow widths',
 );

@@ -360,6 +360,13 @@ body.blog-flex .blog-interaction:focus-within .interaction-title {
     width: min(100%, 520px) !important;
   }
 
+  body.blog-flex #lt-container-outside {
+    left: 0 !important;
+    position: absolute !important;
+    right: 0;
+    top: 10px !important;
+  }
+
   body.blog-flex #lt-container-inside {
     padding: 12px;
   }
