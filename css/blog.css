@@ -368,6 +368,7 @@ body.blog-flex .blog-interaction:focus-within .interaction-title {
     left: auto !important;
     position: relative !important;
     top: auto !important;
+    min-height: 480px;
     width: 100% !important;
     overflow-x: auto;
   }

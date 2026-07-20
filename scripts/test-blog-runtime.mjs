@@ -163,6 +163,13 @@ assert.ok(
   mobileDeclarations('body.blog-flex #lt-right-column').some((rule) => /overflow-x\s*:\s*auto\b/.test(rule)),
   'touch keyboard should remain reachable through a horizontally scrollable shelf at narrow widths',
 );
+assert.ok(
+  mobileDeclarations('body.blog-flex #lt-right-column').some((rule) => {
+    const minHeight = rule.match(/min-height\s*:\s*(\d+)px\b/);
+    return minHeight && Number(minHeight[1]) >= 480;
+  }),
+  'narrow keyboard shelf should reserve enough block space to show the keyboard without vertical scrolling',
+);
 
 assert.match(blogCss, /body\.blog-flex #boardroom/, 'blog CSS should own responsive boardroom layout');
 assert.match(blogCss, /display: grid;/, 'blog CSS should use grid/flex-style layout instead of only fixed boxes');
