@@ -90,7 +90,6 @@
     reader.id = 'blog-reader';
     reader.setAttribute('role', 'dialog');
     reader.setAttribute('aria-modal', 'true');
-    reader.setAttribute('aria-label', 'Article reader');
     reader.innerHTML = [
       '<div class="blog-reader-panel">',
       '<header>',
@@ -99,11 +98,12 @@
       '</header>',
       '<div class="blog-reader-copy">',
       '<p class="blog-reader-meta"></p>',
-      '<h1 class="blog-reader-title"></h1>',
+      '<h1 class="blog-reader-title" id="blog-reader-title"></h1>',
       '<div class="blog-reader-body"></div>',
       '</div>',
       '</div>'
     ].join('');
+    reader.setAttribute('aria-labelledby', 'blog-reader-title');
     document.body.appendChild(reader);
 
     var closeBtn = reader.querySelector('.blog-reader-close');
@@ -167,6 +167,23 @@
       renderLinkSection('LINKED FROM', backlinks) +
       (related.length ? renderLinkSection('RELATED', related) : '');
     reader.classList.add('is-open');
+    
+    // Set background surfaces inert and aria-hidden
+    var lightTable = document.querySelector('#light-table');
+    var boardroom = document.querySelector('#boardroom');
+    if (lightTable) {
+      lightTable.dataset.previouslyInert = lightTable.inert;
+      lightTable.dataset.previouslyAriaHidden = lightTable.getAttribute('aria-hidden');
+      lightTable.inert = true;
+      lightTable.setAttribute('aria-hidden', 'true');
+    }
+    if (boardroom) {
+      boardroom.dataset.previouslyInert = boardroom.inert;
+      boardroom.dataset.previouslyAriaHidden = boardroom.getAttribute('aria-hidden');
+      boardroom.inert = true;
+      boardroom.setAttribute('aria-hidden', 'true');
+    }
+    
     // Lock body scroll.
     document.body.style.overflow = 'hidden';
     // Move focus into the reader.
@@ -177,6 +194,31 @@
   function closeReaderLocal() {
     var reader = document.querySelector('#blog-reader');
     if (reader) reader.classList.remove('is-open');
+    
+    // Restore background surfaces inert and aria-hidden
+    var lightTable = document.querySelector('#light-table');
+    var boardroom = document.querySelector('#boardroom');
+    if (lightTable) {
+      lightTable.inert = lightTable.dataset.previouslyInert === 'true';
+      if (lightTable.dataset.previouslyAriaHidden !== undefined) {
+        lightTable.setAttribute('aria-hidden', lightTable.dataset.previouslyAriaHidden);
+      } else {
+        lightTable.removeAttribute('aria-hidden');
+      }
+      delete lightTable.dataset.previouslyInert;
+      delete lightTable.dataset.previouslyAriaHidden;
+    }
+    if (boardroom) {
+      boardroom.inert = boardroom.dataset.previouslyInert === 'true';
+      if (boardroom.dataset.previouslyAriaHidden !== undefined) {
+        boardroom.setAttribute('aria-hidden', boardroom.dataset.previouslyAriaHidden);
+      } else {
+        boardroom.removeAttribute('aria-hidden');
+      }
+      delete boardroom.dataset.previouslyInert;
+      delete boardroom.dataset.previouslyAriaHidden;
+    }
+    
     document.body.style.overflow = '';
     if (lastFocusedBeforeReader && typeof lastFocusedBeforeReader.focus === 'function') {
       try { lastFocusedBeforeReader.focus(); } catch (e) { /* swallow */ }
@@ -207,7 +249,23 @@
       var folder = document.querySelector(entry[0]);
       if (!folder) return;
       var label = folder.querySelector('.folder-label');
-      if (label) label.textContent = entry[1];
+      if (label) {
+        label.textContent = entry[1];
+        // Make folder a semantic focusable control
+        folder.setAttribute('role', 'button');
+        folder.setAttribute('tabindex', '0');
+        folder.setAttribute('aria-label', entry[1]);
+        
+        // Handle keyboard activation (Enter/Space)
+        folder.addEventListener('keydown', function(event) {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            // Trigger the existing simulated click path
+            var clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+            folder.dispatchEvent(clickEvent);
+          }
+        });
+      }
       folder.removeAttribute('data-post-slug');
     });
   }
@@ -220,6 +278,31 @@
   function html(selector, value) {
     var el = document.querySelector(selector);
     if (el) el.innerHTML = value;
+  }
+
+  // ---- Terminal form wiring -----------------------------------------------
+  function wireTerminalForm() {
+    var form = document.getElementById('lt-command-form');
+    var input = document.getElementById('lt-command-input');
+    if (!form || !input) return;
+    
+    form.addEventListener('submit', function(event) {
+      event.preventDefault();
+      var command = input.value.trim();
+      if (command && window.LightTable && window.LightTable.executeCommand) {
+        // Simulate the command being typed into the visual terminal
+        var commandLines = document.getElementById('lt-command-lines');
+        if (commandLines) {
+          var newCommand = document.createElement('div');
+          newCommand.className = 'command';
+          newCommand.innerHTML = '<span class="prompt">encom-sh:encom_root$&nbsp;</span><span class="command-text">' + escapeHtml(command) + '</span><span class="blink command-blinker">&nbsp;</span>';
+          commandLines.appendChild(newCommand);
+        }
+        // Execute via LightTable's parser
+        window.LightTable.executeCommand(command);
+        input.value = '';
+      }
+    });
   }
 
   // ---- Click delegation for post rows and in-reader links ---------------
@@ -246,24 +329,11 @@
 
   // ---- Controller signal subscriptions ----------------------------------
   if (ctrl) {
-    ctrl.on('post-open', function (payload) {
-      openReaderLocal(payload.slug);
-      // Emit a reader-activity signal so the dashboard reacts.
-      ctrl.emit('reader-activity', { type: 'open', slug: payload.slug });
+    ctrl.on('post-open', function (data) {
+      openReaderLocal(data.slug);
     });
     ctrl.on('post-close', function () {
       closeReaderLocal();
-    });
-    ctrl.on('lens-change', function (payload) {
-      // Update the interaction feed header to reflect the active lens.
-      text('#user-interaction-header', 'ARCHIVE REPLAY');
-      ctrl.emit('reader-activity', { type: 'lens', lens: payload.lens });
-    });
-    ctrl.on('search', function (payload) {
-      ctrl.emit('reader-activity', { type: 'search', query: payload.query });
-    });
-    ctrl.on('filter-tag', function (payload) {
-      ctrl.emit('reader-activity', { type: 'tag', tag: payload.tag });
     });
   }
 
@@ -271,8 +341,7 @@
   function boot() {
     document.body.classList.add('blog-flex');
     installLightTableContent();
-    installReader();
-    // The controller drives post-open via signals; no retry timers needed.
+    wireTerminalForm();
   }
 
   if (document.readyState === 'loading') {

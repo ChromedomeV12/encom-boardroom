@@ -150,13 +150,36 @@ function parseUrlParams() {
 BlogController.routeFromUrl = function () {
   var params = parseUrlParams();
   if (params.post && state.postBySlug[params.post]) {
+    // Deep link to post or post-to-post navigation
+    var isNewPost = state.selectedSlug !== params.post;
     state.selectedSlug = params.post;
+    state.readerOpen = true;
     if (state.ready) {
-      BlogController.openPost(params.post);
+      if (isNewPost) {
+        emit("post-open", { slug: params.post, post: state.postBySlug[params.post] });
+        emit("reader-open", {});
+      }
+      // Don't call openPost from routeFromUrl to avoid duplicate history pushes
     }
   } else if (params.lens) {
+    // Navigation to lens: close reader if open
+    if (state.readerOpen) {
+      var closingSlug = state.selectedSlug;
+      state.selectedSlug = null;
+      state.readerOpen = false;
+      emit("post-close", { slug: closingSlug });
+      emit("reader-close", {});
+    }
     BlogController.setLens(params.lens, false);
   } else if (params.search) {
+    // Navigation to search: close reader if open
+    if (state.readerOpen) {
+      var closingSlug = state.selectedSlug;
+      state.selectedSlug = null;
+      state.readerOpen = false;
+      emit("post-close", { slug: closingSlug });
+      emit("reader-close", {});
+    }
     state.searchQuery = params.search;
     BlogController.setLens("search", false);
   }
@@ -208,18 +231,21 @@ BlogController.getVisiblePosts = function () {
       return new Date(a.date) - new Date(b.date); // chronological
     });
   }
-  if (state.lens === "topics" && state.filterTag) {
-    var slugs = (state.index.tags || {})[state.filterTag] || [];
-    return slugs.map(function (s) { return state.postBySlug[s]; }).filter(Boolean);
+  if (state.lens === "topics") {
+    var tag = state.filterTag;
+    if (!tag) return posts;
+    return posts.filter(function (p) { return (p.tags || []).indexOf(tag) >= 0; });
   }
-  if (state.lens === "search" && state.searchQuery) {
+  if (state.lens === "search") {
     var q = state.searchQuery.toLowerCase();
     return posts.filter(function (p) {
-      return (p.title || "").toLowerCase().indexOf(q) >= 0 ||
-        (p.excerpt || "").toLowerCase().indexOf(q) >= 0 ||
-        (p.tags || []).some(function (t) { return t.toLowerCase().indexOf(q) >= 0; }) ||
-        (p.category || "").toLowerCase().indexOf(q) >= 0;
+      return (p.title + " " + (p.excerpt || "") + " " + (p.tags || []).join(" ")).toLowerCase().indexOf(q) >= 0;
     });
+  }
+  if (state.lens === "year") {
+    var y = state.filterYear;
+    if (!y) return posts;
+    return posts.filter(function (p) { return String(new Date(p.date).getFullYear()) === y; });
   }
   return posts;
 };
@@ -228,19 +254,28 @@ BlogController.getVisiblePosts = function () {
 BlogController.openPost = function (slug) {
   var post = state.postBySlug[slug];
   if (!post) return;
+  // Prevent duplicate opens: if already open to this post, do nothing
+  if (state.selectedSlug === slug && state.readerOpen) return;
   state.selectedSlug = slug;
+  state.readerOpen = true;
   state.readerScrollY = window.scrollY;
   state.readerFocusStack.push(document.activeElement);
   emit("post-open", { slug: slug, post: post });
   emit("reader-open", {}); // Signal for motion policy
-  pushUrl({ post: slug });
+  // Only push history if not already at this URL (e.g., from deep link)
+  var params = parseUrlParams();
+  if (params.post !== slug) {
+    pushUrl({ post: slug });
+  }
   // The reader UI is rendered by the adapter; we just manage state + signals.
   // Focus management happens in the adapter's reader implementation.
 };
+
 BlogController.closePost = function () {
   if (!state.selectedSlug) return;
   var slug = state.selectedSlug;
   state.selectedSlug = null;
+  state.readerOpen = false;
   emit("post-close", { slug: slug });
   emit("reader-close", {}); // Signal for motion policy
   // Restore the lens URL.
@@ -255,6 +290,7 @@ BlogController.closePost = function () {
 };
 
 BlogController.getSelectedSlug = function () { return state.selectedSlug; };
+BlogController.state = state; // Expose state for testing and authoritative readerOpen
 
 // ---- Search/filter -------------------------------------------------------
 BlogController.setSearch = function (query) {

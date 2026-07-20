@@ -150,4 +150,114 @@ resetUrl('?lens=featured');
 eventListeners.popstate.forEach(function (fn) { fn(); });
 assert.equal(BlogController.getLens(), 'featured', 'popstate should re-route to the new URL');
 
-console.log('blog router tests passed (8 tests)');
+
+// --- Test 9: state.readerOpen is authoritative ------------------------
+resetUrl('');
+BlogController.init(samplePosts, sampleIndex);
+assert.equal(BlogController.state.readerOpen, false, 'readerOpen should be false initially');
+BlogController.openPost('alpha');
+assert.equal(BlogController.state.readerOpen, true, 'readerOpen should be true after openPost');
+BlogController.closePost();
+assert.equal(BlogController.state.readerOpen, false, 'readerOpen should be false after closePost');
+
+// --- Test 10: duplicate open does not push history -----------------
+resetUrl('');
+BlogController.init(samplePosts, sampleIndex);
+BlogController.onBoardroomReady();
+var pushCountBefore = mockHistory.pushed.length;
+BlogController.openPost('alpha');
+var pushCountAfter = mockHistory.pushed.length;
+assert.equal(pushCountAfter - pushCountBefore, 1, 'first open should push once');
+BlogController.openPost('alpha'); // duplicate open
+var pushCountAfterDup = mockHistory.pushed.length;
+assert.equal(pushCountAfterDup - pushCountAfter, 0, 'duplicate open should not push history');
+
+// --- Test 11: initial deep link opens reader ------------------------
+resetUrl('?post=beta');
+BlogController.init(samplePosts, sampleIndex);
+assert.equal(BlogController.state.readerOpen, true, 'deep link should set readerOpen to true');
+assert.equal(BlogController.getSelectedSlug(), 'beta', 'deep link should select post');
+
+// --- Test 12: post-to-post popstate replaces content ----------------
+resetUrl('?post=alpha');
+BlogController.init(samplePosts, sampleIndex);
+BlogController.onBoardroomReady();
+var popstateSignalCount = 0;
+BlogController.on('post-open', function () { popstateSignalCount++; });
+// Simulate popstate to another post
+resetUrl('?post=beta');
+eventListeners.popstate.forEach(function (fn) { fn(); });
+assert.equal(BlogController.getSelectedSlug(), 'beta', 'popstate should change selected post');
+assert.equal(popstateSignalCount, 1, 'post-to-post popstate should emit post-open once');
+
+// --- Test 13: post-to-lens popstate closes reader ------------------
+resetUrl('?post=alpha');
+BlogController.init(samplePosts, sampleIndex);
+BlogController.onBoardroomReady();
+var closeSignalCount = 0;
+BlogController.on('post-close', function () { closeSignalCount++; });
+var readerCloseSignalCount = 0;
+BlogController.on('reader-close', function () { readerCloseSignalCount++; });
+// Simulate popstate to lens
+resetUrl('?lens=archive');
+eventListeners.popstate.forEach(function (fn) { fn(); });
+assert.equal(BlogController.getSelectedSlug(), null, 'popstate to lens should clear selection');
+assert.equal(BlogController.state.readerOpen, false, 'popstate to lens should set readerOpen false');
+assert.equal(closeSignalCount, 1, 'popstate to lens should emit post-close once');
+assert.equal(readerCloseSignalCount, 1, 'popstate to lens should emit reader-close once');
+
+// --- Test 14: history count for open/close cycle ------------------
+resetUrl('');
+BlogController.init(samplePosts, sampleIndex);
+BlogController.onBoardroomReady();
+var historyBefore = mockHistory.pushed.length;
+BlogController.openPost('alpha');
+var historyAfterOpen = mockHistory.pushed.length;
+BlogController.closePost();
+var historyAfterClose = mockHistory.pushed.length;
+assert.equal(historyAfterOpen - historyBefore, 1, 'open should push one history entry');
+assert.equal(historyAfterClose - historyAfterOpen, 0, 'close should use replaceState, not push');
+
+// --- Test 15: single origin focus restoration ----------------------
+resetUrl('');
+BlogController.init(samplePosts, sampleIndex);
+BlogController.onBoardroomReady();
+var mockFocusable = { focus: function () { this.focused = true; } };
+global.document.activeElement = mockFocusable;
+BlogController.openPost('alpha');
+assert.ok(BlogController.state.readerFocusStack.length > 0, 'open should push focus to stack');
+BlogController.closePost();
+assert.equal(mockFocusable.focused, true, 'close should restore focus to origin');
+
+// --- Test 16: single origin scroll restoration ---------------------
+resetUrl('');
+BlogController.init(samplePosts, sampleIndex);
+BlogController.onBoardroomReady();
+global.window.scrollY = 500;
+BlogController.openPost('alpha');
+assert.equal(BlogController.state.readerScrollY, 500, 'open should capture scroll position');
+global.window.scrollY = 0; // simulate scroll being reset
+BlogController.closePost();
+assert.equal(global.window.scrollY, 500, 'close should restore scroll position');
+
+// --- Test 17: signals emit exactly once per action ----------------
+resetUrl('');
+BlogController.init(samplePosts, sampleIndex);
+BlogController.onBoardroomReady();
+var openCount = 0;
+var readerOpenCount = 0;
+BlogController.on('post-open', function () { openCount++; });
+BlogController.on('reader-open', function () { readerOpenCount++; });
+BlogController.openPost('alpha');
+assert.equal(openCount, 1, 'openPost should emit post-open once');
+assert.equal(readerOpenCount, 1, 'openPost should emit reader-open once');
+
+var closeCount = 0;
+var readerCloseCount = 0;
+BlogController.on('post-close', function () { closeCount++; });
+BlogController.on('reader-close', function () { readerCloseCount++; });
+BlogController.closePost();
+assert.equal(closeCount, 1, 'closePost should emit post-close once');
+assert.equal(readerCloseCount, 1, 'closePost should emit reader-close once');
+
+console.log('blog router tests passed (17 tests)');

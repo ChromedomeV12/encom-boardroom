@@ -110,6 +110,23 @@ assert.match(adapter, /Escape/, 'reader should close on Escape key');
 assert.match(adapter, /LINKED FROM/, 'reader should render backlinks');
 assert.match(adapter, /LINKS OUT/, 'reader should render outgoing links');
 
+// M6 task 3: reader accessibility and semantic navigation runtime assertions
+assert.match(adapter, /aria-labelledby/, 'reader dialog should use aria-labelledby for naming');
+assert.match(adapter, /aria-modal/, 'reader dialog should have aria-modal');
+assert.match(adapter, /inert/, 'adapter should set inert on background surfaces when reader opens');
+assert.match(adapter, /inert\s*=\s*false|inert\s*=\s*true/, 'adapter should manage inert property');
+assert.match(adapter, /removeAttribute\(['"]aria-hidden['"]\)|setAttribute\(['"]aria-hidden['"]/, 'adapter should manage aria-hidden attribute');
+assert.match(boardroom, /role=["']button['"]|tabindex=["']0['"]/, 'boardroom post rows should be focusable controls');
+assert.match(boardroom, /aria-label/, 'boardroom post rows should have accessible labels');
+assert.match(lightTable, /executeCommand/, 'light-table should expose executeCommand API');
+assert.match(index, /lt-command-form|lt-command-input/, 'index.html should have a real labeled terminal form');
+assert.match(lightTable, /input|textarea|select|contenteditable/, 'light-table key handler should exempt form inputs');
+assert.match(lightTable, /metaKey|ctrlKey|altKey/, 'light-table key handler should ignore modifier shortcuts');
+assert.match(boardroom, /renderBlogInteractions/, 'boardroom should rerender posts on lens changes');
+assert.match(boardroom, /getVisiblePosts/, 'boardroom rerender should use BlogController.getVisiblePosts');
+assert.match(blogCss, /:focus-visible/, 'blog CSS should have :focus-visible styling');
+assert.match(blogCss, /pointer-events:\s*none/, 'interaction overlay should not block pointer events on desktop');
+
 const mobileBlogCss = blogCss.slice(blogCss.indexOf('@media (max-width: 900px)'));
 const mobileRules = [...mobileBlogCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
 

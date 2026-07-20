@@ -96,15 +96,33 @@ function renderBlogInteractions() {
 
     interactionContainer.empty();
     posts.forEach(function(post){
-        interactionContainer.append(
-            '<ul class="interaction-data blog-interaction" data-post-slug="' + escapeHtml(post.slug) + '">' +
-                '<li class="interaction-username">' + escapeHtml(post.category || "post") + '</li>' +
-                '<li class="interaction-title">' + escapeHtml(post.title) + '</li>' +
-                '<li class="interaction-type">' + escapeHtml((post.tags || []).join(", ")) + '</li>' +
-                '<li class="interaction-size">' + escapeHtml(post.readTime || "?") + 'm</li>' +
-                '<li class="interaction-popularity">' + (post.featured ? "featured" : "archive") + '</li>' +
-            '</ul>'
-        );
+        var label = [post.title, post.category, post.date, post.readTime, (post.tags || []).join(", ")].filter(Boolean).join(" — ");
+        var row = $('<button type="button" class="interaction-data blog-interaction" data-post-slug="' + escapeHtml(post.slug) + '" tabindex="0" aria-label="' + escapeHtml(label) + '">' +
+            '<span class="interaction-username">' + escapeHtml(post.category || "post") + '</span>' +
+            '<span class="interaction-title">' + escapeHtml(post.title) + '</span>' +
+            '<span class="interaction-type">' + escapeHtml((post.tags || []).join(", ")) + '</span>' +
+            '<span class="interaction-size">' + escapeHtml(post.readTime || "?") + 'm</span>' +
+            '<span class="interaction-popularity">' + (post.featured ? "featured" : "archive") + '</span>' +
+        '</button>');
+        
+        // Handle keyboard activation (Enter/Space)
+        row.on('keydown', function(event) {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                if (window.BlogController) {
+                    window.BlogController.openPost(post.slug);
+                }
+            }
+        });
+        
+        // Handle click activation
+        row.on('click', function() {
+            if (window.BlogController) {
+                window.BlogController.openPost(post.slug);
+            }
+        });
+        
+        interactionContainer.append(row);
     });
 }
 

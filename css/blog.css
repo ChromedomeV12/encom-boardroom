@@ -462,3 +462,55 @@ body.reduced-effects *::after {
   border-color: #00eeee;
   color: #00eeee;
 }
+/* M6 task 3: Focus-visible styling for keyboard navigation */
+.blog-interaction:focus-visible,
+.folder-container:focus-visible,
+#lt-command-input:focus-visible {
+  outline: 2px solid #ffcc00;
+  outline-offset: 2px;
+}
+
+/* M6 task 3: Terminal form styling */
+#lt-command-form {
+  margin: 8px 0;
+  padding: 0 12px;
+}
+
+#lt-command-input {
+  width: 100%;
+  background: rgba(0, 238, 238, 0.1);
+  border: 1px solid rgba(111, 192, 186, 0.4);
+  color: #d8e1dd;
+  font-family: Inconsolata, monospace;
+  font-size: 12px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+}
+
+#lt-command-input:focus {
+  outline: none;
+  border-color: #ffcc00;
+  background: rgba(0, 238, 238, 0.15);
+}
+
+#lt-command-input::placeholder {
+  color: rgba(216, 225, 221, 0.5);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* M6 task 3: Interaction overlay should not block pointer events on desktop */
+body:not(.blog-flex) #interaction-overlay,
+body.blog-flex #interaction-overlay {
+  pointer-events: none;
+}

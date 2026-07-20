@@ -111,8 +111,15 @@ LightTable.show = function(cb){
     }
 
     $(document).keydown(function(event){
-
-        if(!event.ctrlKey && (event.which < 112 || event.which > 134) && event.which != 91) { // let them do f1-f12, windows key
+        // Exempt form inputs and contenteditable elements
+        var target = event.target;
+        var tagName = target.tagName.toLowerCase();
+        var isInput = tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable;
+        
+        // Exempt modifier shortcuts (ctrl, alt, meta)
+        var hasModifier = event.ctrlKey || event.altKey || event.metaKey;
+        
+        if (!hasModifier && !isInput && (event.which < 112 || event.which > 134) && event.which != 91) { // let them do f1-f12, windows key
             var keycode = event.which;
             event.preventDefault();
             keyClick(keycode);
@@ -567,14 +574,12 @@ function writeLs(exec){
 
     $("#lt-command-lines").append(output);
 
-}
-
 
 /* I could make this much more involved, but i'm not really interested in spending time on this part of the app */
 /* sorry for disappointing anybody looking at this to see how much functionality there is */
 
-function executeCommand(){
-    var command = $(".command-text").last().text();
+function executeCommand(commandString){
+    var command = commandString || $(".command-text").last().text();
 
     if(command == "run blog.exe"){
         if(currentDir == "blog"){
@@ -876,5 +881,5 @@ function keyClick(keycode){
     writeKeyStroke(keycode);
 
 }
-
+LightTable.executeCommand = executeCommand;
 module.exports = LightTable;

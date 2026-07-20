@@ -125,9 +125,15 @@
                                     Last Login: Wed Nov 26 11:26:49 on llvm992
                                 </div>
 
-                                <div id="lt-command-lines">
+                                <div id="lt-command-lines" aria-live="polite" aria-atomic="true">
                                     <div class="command"><span class="prompt">encom-sh:encom_root$&nbsp;</span><span class="command-text"></span><span class="blink command-blinker">&nbsp;</span></div>
                                 </div>
+
+                                <form id="lt-command-form" aria-label="Terminal command input">
+                                    <label for="lt-command-input" class="visually-hidden">Enter command</label>
+                                    <input type="text" id="lt-command-input" name="command" autocomplete="off" spellcheck="false" placeholder="Type a command...">
+                                    <button type="submit" class="visually-hidden">Execute</button>
+                                </form>
 
                             </div>
 
