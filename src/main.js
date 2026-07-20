@@ -154,7 +154,7 @@ PleaseRotate.start({onHide: function(){
 
         
         $("#error-message")
-           .css("visibility", "visible")
+           .css("visibility","visible")
            .center();
 
         console.log(ex);
@@ -173,11 +173,9 @@ PleaseRotate.start({onHide: function(){
         matchMedia: window.matchMedia.bind(window),
         IntersectionObserver: window.IntersectionObserver,
         localStorage: window.localStorage,
-        boardroomElement: document.getElementById('boardroom')
+        boardroomElement: document.getElementById('boardroom'),
+        onResume: Boardroom.resetAnimationClock
     });
-    
-    // Expose motion policy globally for the toggle button
-    window.motionPolicy = motionPolicy;
     
     // Connect BlogController reader signals to motion policy
     BlogController.on('reader-open', function() {
@@ -185,14 +183,13 @@ PleaseRotate.start({onHide: function(){
     });
     BlogController.on('reader-close', function() {
         motionPolicy.setReaderOpen(false);
-        motionPolicy.resetAnimationClock();
     });
 
     var animate = function(){
 
-        if(active === "lt"){
+        if(active === "lt" && motionPolicy.shouldTick('lighttable')) {
             LightTable.animate();
-        } else if (motionPolicy.shouldTick('boardroom')) {
+        } else if (active === "br" && motionPolicy.shouldTick('boardroom')) {
             Boardroom.animate()
         }
 
@@ -212,6 +209,10 @@ PleaseRotate.start({onHide: function(){
     }
 
     window.addEventListener( 'resize', onWindowResize, false );
+    
+    // Wire policy cleanup on page lifecycle
+    window.addEventListener('pagehide', function() {
+        motionPolicy.cleanup();
+    });
 
 }});
-

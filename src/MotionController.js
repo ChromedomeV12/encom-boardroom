@@ -7,6 +7,8 @@ MotionController.create = function(deps) {
   var matchMedia = deps.matchMedia || window.matchMedia.bind(window);
   var IntersectionObserver = deps.IntersectionObserver || window.IntersectionObserver;
   var localStorage = deps.localStorage || window.localStorage;
+  var onResume = deps.onResume || null; // Callback for resume transitions
+  var injectToggle = deps.injectToggle !== false; // Default to true
   
   var REDUCED_EFFECTS_CADENCE = 250; // 4fps
   var STORAGE_KEY = 'encom-reduced-effects';
@@ -22,6 +24,21 @@ MotionController.create = function(deps) {
   var lastTickTime = 0;
   var cleanupCallbacks = [];
   
+  // Track previous blocked state to detect transitions
+  function isBlocked() {
+    return state.documentHidden || state.prefersReducedMotion || state.boardroomOffscreen || state.readerOpen;
+  }
+  
+  var wasBlocked = isBlocked();
+  
+  function checkResumeTransition() {
+    var nowBlocked = isBlocked();
+    if (wasBlocked && !nowBlocked && onResume) {
+      onResume();
+    }
+    wasBlocked = nowBlocked;
+  }
+  
   // Load reduced-effects preference from localStorage
   try {
     var stored = localStorage.getItem(STORAGE_KEY);
@@ -35,6 +52,7 @@ MotionController.create = function(deps) {
   // Visibility API listener
   var onVisibilityChange = function() {
     state.documentHidden = document.hidden;
+    checkResumeTransition();
   };
   document.addEventListener('visibilitychange', onVisibilityChange);
   cleanupCallbacks.push(function() {
@@ -47,6 +65,7 @@ MotionController.create = function(deps) {
   
   var onReducedMotionChange = function(e) {
     state.prefersReducedMotion = e.matches;
+    checkResumeTransition();
   };
   
   if (reducedMotionQuery.addEventListener) {
@@ -65,17 +84,59 @@ MotionController.create = function(deps) {
   // IntersectionObserver for boardroom offscreen detection
   var intersectionObserver = null;
   if (IntersectionObserver) {
-    var boardroomElement = deps.boardroomElement || document.getElementById('boardroom');
+    var boardroomElement = deps.boardroomElement;
+    if (!boardroomElement && typeof document.getElementById === 'function') {
+      boardroomElement = document.getElementById('boardroom');
+    }
     if (boardroomElement) {
       intersectionObserver = new IntersectionObserver(function(entries) {
         entries.forEach(function(entry) {
           state.boardroomOffscreen = !entry.isIntersecting;
+          checkResumeTransition();
         });
       }, { threshold: 0.1 });
       
       intersectionObserver.observe(boardroomElement);
       cleanupCallbacks.push(function() {
         intersectionObserver.disconnect();
+      });
+    }
+  }
+  
+  // Inject and manage toggle button
+  var toggleElement = null;
+  var toggleClickHandler = null;
+  
+  if (injectToggle) {
+    var globeFooter = typeof document.getElementById === 'function' ? document.getElementById('globe-footer') : null;
+    if (globeFooter) {
+      toggleElement = document.createElement('button');
+      toggleElement.id = 'reduced-effects-toggle';
+      toggleElement.setAttribute('aria-pressed', state.reducedEffects);
+      toggleElement.textContent = 'Reduced Effects';
+      
+      // Set initial body class
+      if (state.reducedEffects && document.body) {
+        document.body.classList.add('reduced-effects');
+      }
+      
+      toggleClickHandler = function() {
+        var currentState = state.reducedEffects;
+        var newState = !currentState;
+        policy.setReducedEffects(newState);
+        toggleElement.setAttribute('aria-pressed', newState);
+      };
+      
+      toggleElement.addEventListener('click', toggleClickHandler);
+      globeFooter.appendChild(toggleElement);
+      
+      cleanupCallbacks.push(function() {
+        if (toggleElement && toggleClickHandler) {
+          toggleElement.removeEventListener('click', toggleClickHandler);
+        }
+        if (toggleElement && toggleElement.parentNode) {
+          toggleElement.parentNode.removeChild(toggleElement);
+        }
       });
     }
   }
@@ -92,11 +153,7 @@ MotionController.create = function(deps) {
     },
     
     shouldTick: function(view) {
-      // LightTable is not affected by boardroom-specific throttling
-      if (view !== 'boardroom') {
-        return true;
-      }
-      
+      // Both LightTable and Boardroom are gated through the policy
       // Pause if document is hidden
       if (state.documentHidden) {
         return false;
@@ -107,13 +164,13 @@ MotionController.create = function(deps) {
         return false;
       }
       
-      // Pause if boardroom is offscreen
-      if (state.boardroomOffscreen) {
+      // Boardroom-specific: pause if offscreen
+      if (view === 'boardroom' && state.boardroomOffscreen) {
         return false;
       }
       
-      // Pause if reader is open
-      if (state.readerOpen) {
+      // Boardroom-specific: pause if reader is open
+      if (view === 'boardroom' && state.readerOpen) {
         return false;
       }
       
@@ -131,6 +188,7 @@ MotionController.create = function(deps) {
     
     setReaderOpen: function(open) {
       state.readerOpen = open;
+      checkResumeTransition();
     },
     
     setReducedEffects: function(enabled) {
@@ -141,6 +199,11 @@ MotionController.create = function(deps) {
         // localStorage may not be available
       }
       
+      // Reset throttling clock when enabling to ensure first tick passes
+      if (enabled) {
+        lastTickTime = 0;
+      }
+      
       // Update body class
       if (document.body) {
         if (enabled) {
@@ -148,6 +211,11 @@ MotionController.create = function(deps) {
         } else {
           document.body.classList.remove('reduced-effects');
         }
+      }
+      
+      // Sync toggle button if it exists
+      if (toggleElement) {
+        toggleElement.setAttribute('aria-pressed', enabled);
       }
     },
     

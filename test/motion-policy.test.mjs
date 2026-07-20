@@ -139,7 +139,8 @@ async function runTests() {
     IntersectionObserver: fakeBrowser.IntersectionObserver,
     localStorage: fakeBrowser.localStorage,
     boardroomElement: { id: 'boardroom' }, // Fake element
-    intersectionObservers: fakeBrowser.intersectionObservers
+    intersectionObservers: fakeBrowser.intersectionObservers,
+    injectToggle: false // Disable toggle injection in tests
   };
   
   // Test 1: Full-rate visible mode
@@ -196,6 +197,7 @@ async function runTests() {
   policy1.setReducedEffects(false); // Disable reduced-effects for this test
   policy1.resetAnimationClock();
   assert.strictEqual(policy1.shouldTick('boardroom'), true, 'tick should pass after clock reset');
+  
   // Test 9: Preference changes
   console.log('Test 9: Preference changes');
   media.triggerChange(true);
@@ -215,6 +217,7 @@ async function runTests() {
   assert.strictEqual(fakeBrowser.localStorage.getItem('encom-reduced-effects'), 'false', 'should save disabled state');
   policy2.setReducedEffects(true);
   assert.strictEqual(fakeBrowser.localStorage.getItem('encom-reduced-effects'), 'true', 'should save enabled state');
+  
   // Test 12: Cleanup
   console.log('Test 12: Cleanup');
   const observerCountBefore = deps.intersectionObservers.length;
@@ -223,6 +226,100 @@ async function runTests() {
   
   // Clean up policy1 as well
   policy1.cleanup();
+  
+  // Test 13: onResume callback is invoked on blocked->unblocked transitions
+  console.log('Test 13: onResume callback is invoked on blocked->unblocked transitions');
+  let resumeCallbackInvocations = [];
+  const onResume = () => { resumeCallbackInvocations.push(Date.now()); };
+  const depsWithCallback = {
+    document: fakeBrowser.document,
+    matchMedia: fakeBrowser.matchMedia,
+    IntersectionObserver: fakeBrowser.IntersectionObserver,
+    localStorage: fakeBrowser.localStorage,
+    boardroomElement: { id: 'boardroom' },
+    intersectionObservers: fakeBrowser.intersectionObservers,
+    onResume: onResume,
+    injectToggle: false
+  };
+  const policy3 = MotionController.create(depsWithCallback);
+  
+  // Trigger intersection as visible
+  if (depsWithCallback.intersectionObservers.length > 0) {
+    depsWithCallback.intersectionObservers[0].trigger([{ isIntersecting: true, target: {} }]);
+  }
+  
+  // Test reader-close triggers resume
+  policy3.setReaderOpen(true);
+  policy3.setReaderOpen(false);
+  assert.strictEqual(resumeCallbackInvocations.length, 1, 'onResume should be called on reader-close');
+  
+  // Test visibility change triggers resume
+  fakeBrowser.document.triggerVisibility(true);
+  fakeBrowser.document.triggerVisibility(false);
+  assert.strictEqual(resumeCallbackInvocations.length, 2, 'onResume should be called on visibility change to visible');
+  
+  // Test reduced-motion change triggers resume
+  const media3 = depsWithCallback.matchMedia('(prefers-reduced-motion: reduce)');
+  media3.triggerChange(true);
+  media3.triggerChange(false);
+  assert.strictEqual(resumeCallbackInvocations.length, 3, 'onResume should be called on reduced-motion change to false');
+  
+  // Test intersection change triggers resume
+  const observer3 = depsWithCallback.intersectionObservers[depsWithCallback.intersectionObservers.length - 1];
+  observer3.trigger([{ isIntersecting: false, target: {} }]);
+  observer3.trigger([{ isIntersecting: true, target: {} }]);
+  assert.strictEqual(resumeCallbackInvocations.length, 4, 'onResume should be called on intersection change to visible');
+  
+  policy3.cleanup();
+  
+  // Test 14: LightTable is gated through policy (hidden pauses)
+  console.log('Test 14: LightTable is gated through policy (hidden pauses)');
+  const policy4 = MotionController.create(deps);
+  if (deps.intersectionObservers.length > 0) {
+    deps.intersectionObservers[0].trigger([{ isIntersecting: true, target: {} }]);
+  }
+  assert.strictEqual(policy4.shouldTick('lighttable'), true, 'LightTable should tick when visible');
+  fakeBrowser.document.triggerVisibility(true);
+  assert.strictEqual(policy4.shouldTick('lighttable'), false, 'LightTable should not tick when hidden');
+  fakeBrowser.document.triggerVisibility(false);
+  
+  // Test 15: LightTable is gated through policy (reduced-motion pauses)
+  console.log('Test 15: LightTable is gated through policy (reduced-motion pauses)');
+  const media4 = deps.matchMedia('(prefers-reduced-motion: reduce)');
+  media4.triggerChange(true);
+  assert.strictEqual(policy4.shouldTick('lighttable'), false, 'LightTable should not tick when prefers-reduced-motion');
+  media4.triggerChange(false);
+  
+  // Test 16: LightTable is throttled in reduced-effects mode
+  console.log('Test 16: LightTable is throttled in reduced-effects mode');
+  policy4.setReducedEffects(true);
+  assert.strictEqual(policy4.shouldTick('lighttable'), true, 'first LightTable tick should pass in reduced-effects');
+  assert.strictEqual(policy4.shouldTick('lighttable'), false, 'immediate second LightTable tick should be throttled');
+  policy4.setReducedEffects(false);
+  
+  // Test 17: LightTable is not frozen by boardroom-only offscreen state
+  console.log('Test 17: LightTable is not frozen by boardroom-only offscreen state');
+  const observer4 = deps.intersectionObservers[deps.intersectionObservers.length - 1];
+  observer4.trigger([{ isIntersecting: false, target: {} }]);
+  assert.strictEqual(policy4.shouldTick('lighttable'), true, 'LightTable should tick even when boardroom offscreen');
+  assert.strictEqual(policy4.shouldTick('boardroom'), false, 'Boardroom should not tick when offscreen');
+  
+  policy4.cleanup();
+  
+  // Test 18: Missing boardroom element is not a blocker
+  console.log('Test 18: Missing boardroom element is not a blocker');
+  const depsWithoutElement = {
+    document: fakeBrowser.document,
+    matchMedia: fakeBrowser.matchMedia,
+    IntersectionObserver: fakeBrowser.IntersectionObserver,
+    localStorage: fakeBrowser.localStorage,
+    boardroomElement: null,
+    intersectionObservers: fakeBrowser.intersectionObservers,
+    injectToggle: false
+  };
+  const policy5 = MotionController.create(depsWithoutElement);
+  assert.strictEqual(policy5.shouldTick('boardroom'), true, 'should tick without boardroom element (no offscreen detection)');
+  policy5.cleanup();
   
   console.log('All motion policy behavior tests passed');
 }
