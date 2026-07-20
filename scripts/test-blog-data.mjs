@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { sanitizeUrl } from './blog/sanitize.js';
+
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -61,7 +63,7 @@ tags: [alpha, signals]
 category: Dispatches
 featured: true
 ---
-This note links to [[Beta Signal|the beta note]] and embeds ![[attachments/panel.svg]].
+This note links to [[Beta Signal|the beta note]] and [[Beta Signal#Beta Heading|the beta section]] and embeds ![[attachments/panel.svg]].
 
 ## Practical Defaults
 
@@ -77,6 +79,8 @@ date: 2026-06-14
 tags: [beta]
 category: Dispatches
 ---
+## Beta Heading
+
 Beta body.
 `);
 
@@ -103,6 +107,10 @@ Beta body.
   assert.ok(alpha.headings.length >= 1, 'alpha should have headings');
   assert.equal(alpha.headings[0].id, 'practical-defaults');
   assert.ok(alpha.html.includes('id="practical-defaults"'), 'heading id injected');
+  assert.match(alpha.html, /href="\/posts\/beta-signal\/"/, 'cross-post wikilinks use canonical article routes');
+  assert.match(alpha.html, /href="\/posts\/beta-signal\/#beta-heading"/, 'cross-post heading links use valid fragments');
+  assert.doesNotMatch(alpha.html, /#post:/, 'legacy runtime-only cross-post fragments must not leak into published HTML');
+  assert.match(alpha.html, /src="\/blog-assets\/attachments\/panel\.svg"/, 'embedded assets use root-relative URLs');
   assert.ok(alpha.html.includes('<ul>'), 'list rendered');
   assert.ok(index.relatedBySlug['beta-signal'].includes('alpha-signal'));
   assert.equal(index.totalCount, 2);
@@ -183,6 +191,14 @@ date: 2026-06-15
   assert.doesNotMatch(html, /javascript:/i, 'javascript: URLs must be stripped');
   assert.doesNotMatch(html, /<script/i, 'script tags must be removed');
 }
+
+// --- Test 8: Complete HTML references are decoded before URL checks --------
+async function testEncodedUnsafeUrlsSanitized() {
+  assert.equal(sanitizeUrl('jav&#x61;script&#x3a;alert(1)'), '');
+  assert.equal(sanitizeUrl('j&Tab;av&#x61;script&colon;alert(1)'), '');
+  assert.equal(sanitizeUrl('data&#x74;&#x61;&#x3a;text/html,<svg>'), '');
+}
+
 
 // --- Test 8: Drafts are skipped but valid posts build ---------------------
 async function testDraftsSkipped() {
@@ -337,6 +353,21 @@ async function testSlugFallbackToFilename() {
   assert.equal(posts[0].slug, 'my-post-file', 'slug falls back to filename');
 }
 
+// --- Test 15: Explicit slugs normalize to one safe URL segment -------------
+async function testExplicitSlugIsCanonicalSegment() {
+  const root = await fixtureRoot('explicit-slug');
+  await writePost(root, 'unsafe.md', `---
+title: Unsafe Route
+slug: ../Section/Unsafe?x=1#frag
+date: 2026-06-15
+---
+Body.`);
+  const { posts } = await runBuild(root);
+  assert.equal(posts[0].slug, 'section-unsafe-x-1-frag');
+  assert.doesNotMatch(posts[0].slug, /[/\\?#]/, 'explicit slug must remain one safe path segment');
+}
+
+
 await testBuildsBlogIndexAndBacklinks();
 await testFailsForMissingWikilinkAndAsset();
 await testUnicodeSlugsAndFilenames();
@@ -344,6 +375,7 @@ await testDuplicateSlugsFail();
 await testInvalidDateFails();
 await testPathTraversalBlocked();
 await testUnsafeUrlsSanitized();
+await testEncodedUnsafeUrlsSanitized();
 await testDraftsSkipped();
 await testGfmConstructs();
 await testHeadingIdsAndToc();
@@ -351,4 +383,5 @@ await testYamlEdgeCases();
 await testAliasWikilinks();
 await testDeterministicOutput();
 await testSlugFallbackToFilename();
-console.log('blog data tests passed (14 tests)');
+await testExplicitSlugIsCanonicalSegment();
+console.log('blog data tests passed (16 tests)');

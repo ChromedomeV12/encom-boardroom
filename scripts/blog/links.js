@@ -7,10 +7,10 @@ import slugify from './slug.js';
 
 /**
  * Process the raw markdown body to resolve Obsidian wikilink syntax.
- * - ![[asset.png]] and ![[asset.png|alt]]  -> ![alt](blog-assets/asset.png)
- * - [[Note]] and [[Note|alias]]            -> [alias](#post:<slug>)
+ * - ![[asset.png]] and ![[asset.png|alt]]  -> ![alt](/blog-assets/asset.png)
+ * - [[Note]] and [[Note|alias]]            -> [alias](/posts/<slug>/)
  * - [[#Heading]]                            -> [Heading](#<heading-slug>)  (same-doc anchor)
- * - [[Note#Heading]]                        -> [Heading](#post:<slug>)     (cross-note anchor resolved later)
+ * - [[Note#Heading]]                        -> [Heading](/posts/<slug>/#<heading-slug>)
  *
  * `postByTitle` is a Map of lowercased-title -> { slug, title } for
  * resolving which note a wikilink points at.
@@ -27,6 +27,11 @@ export function resolveWikilinks(source, postByTitle, sourceDir, diagnostics) {
   const outgoing = new Map();
   const assets = [];
 
+  const canonicalPostHref = (slug, anchor = '') => {
+    const fragment = anchor ? slugify(anchor) : '';
+    return `/posts/${slug}/${fragment ? `#${fragment}` : ''}`;
+  };
+
   // Embeds first: ![[target]] or ![[target|alt]]
   let body = source.replace(/!\[\[([^\]]+)\]\]/g, (match, raw) => {
     const target = normalizeAssetTarget(raw);
@@ -42,7 +47,7 @@ export function resolveWikilinks(source, postByTitle, sourceDir, diagnostics) {
       return match;
     }
     assets.push(target);
-    return `![${alt}](blog-assets/${target})`;
+    return `![${alt}](/blog-assets/${target})`;
   });
 
   // Wikilinks: [[target]] or [[target|alias]]
@@ -52,7 +57,8 @@ export function resolveWikilinks(source, postByTitle, sourceDir, diagnostics) {
 
     // Same-document heading link: [[#Heading]]
     if (!title && anchor) {
-      return `[${alias || anchor}](#${slugify(anchor)})`;
+      const fragment = slugify(anchor);
+      return `[${alias || anchor}](#${fragment})`;
     }
 
     const linked = postByTitle.get(title.toLowerCase());
@@ -60,10 +66,8 @@ export function resolveWikilinks(source, postByTitle, sourceDir, diagnostics) {
       outgoing.set(linked.slug, { slug: linked.slug, title: linked.title });
       const label = alias || (anchor ? anchor : linked.title);
       // Cross-note heading anchor: point at the post, browser scrolls to anchor later.
-      if (anchor) {
-        return `[${label}](#post:${linked.slug}:${slugify(anchor)})`;
-      }
-      return `[${label}](#post:${linked.slug})`;
+      // Cross-note links must work from nested canonical article pages.
+      return `[${label}](${canonicalPostHref(linked.slug, anchor)})`;
     }
 
     // Not found. Emit a diagnostic, but still produce a link so the doc
@@ -74,7 +78,7 @@ export function resolveWikilinks(source, postByTitle, sourceDir, diagnostics) {
       context: title
     });
     const fallbackSlug = slugify(title) || 'unknown';
-    return `[${alias || title}](#post:${fallbackSlug})`;
+    return `[${alias || title}](${canonicalPostHref(fallbackSlug)})`;
   });
 
   return {

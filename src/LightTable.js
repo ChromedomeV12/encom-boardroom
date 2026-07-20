@@ -14,6 +14,15 @@ var webglTest,
 
 /* public function */
 
+function selectBlogLens(lens) {
+    window.BLOG_LAUNCH_MODE = lens;
+    if(window.BlogController && typeof window.BlogController.setLens === "function"){
+        // Prime the authoritative controller before main initializes the
+        // boardroom, while leaving the launcher's URL untouched.
+        window.BlogController.setLens(lens, false);
+    }
+}
+
 LightTable.init = function(_hideFn){
 
     hideFn = _hideFn;
@@ -36,7 +45,7 @@ LightTable.init = function(_hideFn){
     /* set events */
 
     $("#lt-launch-github").click(function(){
-        window.BLOG_LAUNCH_MODE = "featured";
+        selectBlogLens("featured");
         $(this).find(".folder-big").css("background-color", "#fff");
         simulateCommand("|cd blog$");
         simulateCommand("ls$");
@@ -46,7 +55,7 @@ LightTable.init = function(_hideFn){
     });
 
     $("#lt-launch-wikipedia").click(function(){
-        window.BLOG_LAUNCH_MODE = "archive";
+        selectBlogLens("archive");
         $(this).find(".folder-small").css("background-color", "#fff");
         simulateCommand("|cd blog$");
         simulateCommand("ls$");
@@ -56,18 +65,17 @@ LightTable.init = function(_hideFn){
     });
 
     $("#lt-launch-test").click(function(){
-        window.BLOG_LAUNCH_MODE = "latest";
+        selectBlogLens("latest");
         $(this).find(".folder-small").css("background-color", "#fff");
         simulateCommand("|cd blog$");
         simulateCommand("ls$");
         simulateCommand("run blog.exe$");
         $(document).off();
         $(".folder-container").off();
-
     });
 
     $("#lt-launch-bitcoin").click(function(){
-        window.BLOG_LAUNCH_MODE = "topics";
+        selectBlogLens("topics");
         $(this).find(".folder-big").css("background-color", "#fff");
         simulateCommand("|cd blog$");
         simulateCommand("ls$");
@@ -77,7 +85,7 @@ LightTable.init = function(_hideFn){
     });
 
     $("#lt-launch-unknown").click(function(){
-        window.BLOG_LAUNCH_MODE = "search";
+        selectBlogLens("search");
         $(this).find(".folder-small").css("background-color", "#fff");
         simulateCommand("|cd blog$");
         simulateCommand("ls$");
@@ -534,8 +542,43 @@ function hideWebgl(){
     $('#lt-bandwidth').css("opacity", 0);
 }
 
-function writeResponse(txt){
-    $("#lt-command-lines").append("<div class='response'>&gt;&gt;encom-sh: " + txt + "</div>");
+function escapeHtml(value){
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function(char){
+        return {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        }[char];
+    });
+}
+
+function terminalText(text){
+    return {text: String(text == null ? "" : text)};
+}
+
+function terminalStatus(className, text){
+    return {className: className, text: String(text == null ? "" : text)};
+}
+
+function writeResponse(parts){
+    var response = document.createElement("div");
+    response.className = "response";
+    response.appendChild(document.createTextNode(">>encom-sh: "));
+    var list = Array.isArray(parts) ? parts : [terminalText(parts)];
+    list.forEach(function(part){
+        var node = document.createTextNode(String(part && part.text != null ? part.text : ""));
+        if(part && part.className){
+            var status = document.createElement("span");
+            status.className = part.className;
+            status.appendChild(node);
+            response.appendChild(status);
+        } else {
+            response.appendChild(node);
+        }
+    });
+    $("#lt-command-lines").append(response);
 }
 
 var currentDir = "encom_root";
@@ -543,7 +586,20 @@ var currentDir = "encom_root";
 function writePrompt(){
     $(".command-blinker").removeClass("blink").removeClass("command-blinker");
 
-    $("#lt-command-lines").append('<div class="command"><span class="prompt">encom-sh:' + currentDir + '$&nbsp;</span><span class="command-text"></span><span class="blink command-blinker">&nbsp;</span></div>');
+    var command = document.createElement("div");
+    command.className = "command";
+    var prompt = document.createElement("span");
+    prompt.className = "prompt";
+    prompt.textContent = "encom-sh:" + currentDir + "$ ";
+    var commandText = document.createElement("span");
+    commandText.className = "command-text";
+    var blinker = document.createElement("span");
+    blinker.className = "blink command-blinker";
+    blinker.textContent = " ";
+    command.appendChild(prompt);
+    command.appendChild(commandText);
+    command.appendChild(blinker);
+    $("#lt-command-lines").append(command);
 }
 
 function writeLs(exec){
@@ -554,7 +610,7 @@ function writeLs(exec){
             '<div class="ls">bandwidth</div>',
             '<div class="ls">framework</div>',
             '<div class="ls">@arscan</div>',
-            '<div class="ls ls-exec">' + exec + '</div>',
+            '<div class="ls ls-exec">' + escapeHtml(exec) + '</div>',
             '<div class="ls">webgl_test</div>',
             '<div class="ls">flynn_5</div>',
             '<div class="ls">&nbsp;</div>',
@@ -591,7 +647,7 @@ function executeCommand(commandString){
                 hideFn("blog");
             }, 500);
         } else {
-            writeResponse("<span class='alert'>Error:</span> No such file");
+            writeResponse([terminalStatus("alert", "Error:"), terminalText(" No such file")]);
             writePrompt();
         }
 
@@ -604,7 +660,7 @@ function executeCommand(commandString){
                 hideFn("github");
             }, 500);
         } else {
-            writeResponse("<span class='alert'>Error:</span> No such file");
+            writeResponse([terminalStatus("alert", "Error:"), terminalText(" No such file")]);
             writePrompt();
         }
 
@@ -618,7 +674,7 @@ function executeCommand(commandString){
             }, 500);
 
         } else {
-            writeResponse("<span class='alert'>Error:</span> No such file");
+            writeResponse([terminalStatus("alert", "Error:"), terminalText(" No such file")]);
             writePrompt();
         }
     } else if(command == "run test.exe"){
@@ -631,7 +687,7 @@ function executeCommand(commandString){
             }, 500);
 
         } else {
-            writeResponse("<span class='alert'>Error:</span> No such file");
+            writeResponse([terminalStatus("alert", "Error:"), terminalText(" No such file")]);
             writePrompt();
         }
 
@@ -642,47 +698,47 @@ function executeCommand(commandString){
             "  featured      — open the featured lens",
             "  latest        — open the latest lens (newest first)",
             "  tags          — list all tags",
-            "  tag &lt;name&gt;   — filter by tag",
-            "  year &lt;yyyy&gt;  — filter by year",
-            "  search &lt;query&gt; — search posts",
-            "  open &lt;slug&gt;  — open a post by slug",
+            "  tag <name>   — filter by tag",
+            "  year <yyyy>  — filter by year",
+            "  search <query> — search posts",
+            "  open <slug>  — open a post by slug",
             "  back          — return to the light table"
         ].join("\n"));
         writePrompt();
     } else if(currentDir == "blog" && command == "featured"){
         if(window.BlogController){ window.BlogController.setLens("featured"); }
-        writeResponse("Lens: <span class='highlight'>featured</span>");
+        writeResponse([terminalText("Lens: "), terminalStatus("highlight", "featured")]);
         writePrompt();
     } else if(currentDir == "blog" && command == "latest"){
         if(window.BlogController){ window.BlogController.setLens("latest"); }
-        writeResponse("Lens: <span class='highlight'>latest</span>");
+        writeResponse([terminalText("Lens: "), terminalStatus("highlight", "latest")]);
         writePrompt();
     } else if(currentDir == "blog" && command == "tags"){
         var tags = window.BLOG_INDEX ? Object.keys(window.BLOG_INDEX.tags || {}) : [];
-        writeResponse(tags.length ? "Tags: " + tags.join(", ") : "No tags.");
+        writeResponse(tags.length ? [terminalText("Tags: "), terminalText(tags.join(", "))] : terminalText("No tags."));
         writePrompt();
     } else if(currentDir == "blog" && command.indexOf("tag ") == 0){
         var tagName = command.slice(4).trim();
         if(window.BlogController){ window.BlogController.setFilterTag(tagName); }
-        writeResponse("Filtering by tag: <span class='highlight'>" + tagName + "</span>");
+        writeResponse([terminalText("Filtering by tag: "), terminalStatus("highlight", tagName)]);
         writePrompt();
     } else if(currentDir == "blog" && command.indexOf("year ") == 0){
         var yearName = command.slice(5).trim();
         if(window.BlogController){ window.BlogController.setFilterYear(yearName); }
-        writeResponse("Filtering by year: <span class='highlight'>" + yearName + "</span>");
+        writeResponse([terminalText("Filtering by year: "), terminalStatus("highlight", yearName)]);
         writePrompt();
     } else if(currentDir == "blog" && command.indexOf("search ") == 0){
         var query = command.slice(7).trim();
         if(window.BlogController){ window.BlogController.setSearch(query); }
-        writeResponse("Searching: <span class='highlight'>" + query + "</span>");
+        writeResponse([terminalText("Searching: "), terminalStatus("highlight", query)]);
         writePrompt();
     } else if(currentDir == "blog" && command.indexOf("open ") == 0){
         var slug = command.slice(5).trim();
         if(window.BlogController && window.BlogController.getPost(slug)){
             window.BlogController.openPost(slug);
-            writeResponse("Opening: <span class='highlight'>" + slug + "</span>");
+            writeResponse([terminalText("Opening: "), terminalStatus("highlight", slug)]);
         } else {
-            writeResponse("<span class='alert'>No post:</span> " + slug);
+            writeResponse([terminalStatus("alert", "No post:"), terminalText(" "), terminalText(slug)]);
         }
         writePrompt();
     } else if(currentDir == "blog" && command == "back"){
@@ -694,11 +750,11 @@ function executeCommand(commandString){
         currentDir = "blog";
         $(".folder-label").removeClass("selected");
         $("#lt-launch-github .folder-label").addClass("selected");
-        writeResponse("Changed directory to <span class='highlight'>blog</span>");
+        writeResponse([terminalText("Changed directory to "), terminalStatus("highlight", "blog")]);
         writePrompt();
 
     } else if(command == "cd github"){
-        writeResponse("<span class='alert'>Access denied</span>");
+        writeResponse([terminalStatus("alert", "Access denied")]);
         writePrompt();
 
     } else if(command == "cd wikipedia"){
@@ -706,7 +762,7 @@ function executeCommand(commandString){
         $(".folder-label").removeClass("selected");
         $("#lt-launch-wikipedia .folder-label").addClass("selected");
         currentDir = "wikipedia";
-        writeResponse("Changed directory to <span class='highlight'>wikipedia</span>");
+        writeResponse([terminalText("Changed directory to "), terminalStatus("highlight", "wikipedia")]);
         writePrompt();
 
     } else if(command == "cd test"){
@@ -714,17 +770,17 @@ function executeCommand(commandString){
         $(".folder-label").removeClass("selected");
         $("#lt-launch-test .folder-label").addClass("selected");
         currentDir = "test";
-        writeResponse("Changed directory to <span class='highlight'>test</span>");
+        writeResponse([terminalText("Changed directory to "), terminalStatus("highlight", "test")]);
         writePrompt();
     } else if(command == "cd bitcoin") {
-        writeResponse("<span class='alert'>Not yet implemented</span>");
+        writeResponse([terminalStatus("alert", "Not yet implemented")]);
         writePrompt();
     } else if(command.indexOf("cd encom") == 0 || command == "cd /"){
         currentDir = "encom_root";
-        writeResponse("Changed directory to <span class='highlight'>encom_root</span>");
+        writeResponse([terminalText("Changed directory to "), terminalStatus("highlight", "encom_root")]);
         writePrompt();
     } else if(command.indexOf("cd ") == 0){
-        writeResponse("<span class='alert'>Access denied</span>");
+        writeResponse([terminalStatus("alert", "Access denied")]);
         writePrompt();
     } else if(command.indexOf("ls") == 0 && currentDir == "encom_root"){
         writeLs();
@@ -735,7 +791,7 @@ function executeCommand(commandString){
         writePrompt();
 
     } else if(command.indexOf("run") == 0){
-        writeResponse("<span class='alert'>Access denied</span>");
+        writeResponse([terminalStatus("alert", "Access denied")]);
         writePrompt();
     } else {
         writeResponse("command not found");

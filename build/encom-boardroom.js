@@ -81715,6 +81715,8 @@ var state = {
   index: {},                // window.BLOG_INDEX
   postBySlug: {},
   readerOpen: false,
+  readerPending: false,     // deep-link/requested reader awaiting lifecycle readiness
+  readerOriginCaptured: false,
   readerFocusStack: [],     // focus restoration stack
   readerScrollY: 0,         // scroll position before reader opened
   signalListeners: []
@@ -81736,17 +81738,26 @@ function emit(eventType, payload) {
 }
 
 BlogController.emit = emit;
-
-// ---- Initialization ------------------------------------------------------
 BlogController.init = function (posts, index) {
   state.ready = false;  // re-init implies a fresh boardroom lifecycle
+  BlogController.stopArchiveReplay();
+  state.lens = "featured";
+  state.selectedSlug = null;
+  state.searchQuery = "";
+  state.filterTag = null;
+  state.filterYear = null;
+  state.readerOpen = false;
+  state.readerPending = false;
+  state.readerOriginCaptured = false;
+  state.readerFocusStack = [];
+  state.readerScrollY = 0;
   state.posts = posts || [];
   state.index = index || {};
   state.postBySlug = {};
   for (var i = 0; i < state.posts.length; i++) {
     state.postBySlug[state.posts[i].slug] = state.posts[i];
   }
-  // Parse the initial URL for a deep-linked post.
+  // Parse the initial URL for a deep-linked post or discovery lens.
   BlogController.routeFromUrl();
 };
 
@@ -81755,12 +81766,18 @@ BlogController.onBoardroomReady = function () {
   if (state.ready) return;
   state.ready = true;
   emit("ready", { lens: state.lens, postCount: state.posts.length });
-  // Start archive replay at a controlled cadence.
+  // Start archive replay at a controlled cadence once Boardroom.show reports readiness.
   startArchiveReplay();
-  // If a post was deep-linked, open it now that the boardroom is ready.
-  if (state.selectedSlug) {
-    BlogController.openPost(state.selectedSlug);
+};
+
+// Render an initial deep-linked post after the adapter has subscribed to
+// controller signals, without changing boardroom lifecycle state.
+BlogController.renderPendingPost = function () {
+  if (!state.readerPending || !state.selectedSlug || !state.postBySlug[state.selectedSlug]) {
+    return false;
   }
+  BlogController.openPost(state.selectedSlug);
+  return true;
 };
 
 // ---- BlogSignal / archive replay ----------------------------------------
@@ -81778,6 +81795,10 @@ function postToSignal(post) {
     title: post.title,
     type: (post.tags && post.tags[0]) || post.category || "post",
     size: post.readTime ? post.readTime + "m" : "",
+    category: post.category || "Notes",
+    tags: (post.tags || []).slice(),
+    readTime: post.readTime || 0,
+    featured: !!post.featured,
     popularity: post.linkDegree || 0,
     latlon: post.location ? { lat: post.location.lat, lon: post.location.lng } : null,
     location: post.location ? (post.location.label || post.location.lat + "," + post.location.lng) : "",
@@ -81792,7 +81813,7 @@ function postToSignal(post) {
 function startArchiveReplay() {
   clearInterval(replayTimer);
   replayIndex = 0;
-  var posts = state.posts;
+  var posts = BlogController.getVisiblePosts();
   if (!posts.length) return;
   // Replay one signal every 1.2s. The boardroom reacts to each.
   replayTimer = setInterval(function () {
@@ -81830,48 +81851,103 @@ function parseUrlParams() {
   var pairs = search.split("&");
   for (var i = 0; i < pairs.length; i++) {
     var eq = pairs[i].indexOf("=");
-    var key = eq >= 0 ? pairs[i].slice(0, eq) : pairs[i];
-    var val = eq >= 0 ? decodeURIComponent(pairs[i].slice(eq + 1)) : "";
+    var rawKey = eq >= 0 ? pairs[i].slice(0, eq) : pairs[i];
+    var rawValue = eq >= 0 ? pairs[i].slice(eq + 1) : "";
+    var key;
+    var val;
+    try { key = decodeURIComponent(rawKey); } catch (e) { key = rawKey; }
+    try { val = decodeURIComponent(rawValue); } catch (e) { val = rawValue; }
     params[key] = val;
   }
   return params;
 }
 
+function hasParam(params, key) {
+  return Object.prototype.hasOwnProperty.call(params, key);
+}
+
+function normaliseLens(lens) {
+  var known = { featured: true, latest: true, topics: true, archive: true, search: true };
+  return known[lens] ? lens : "featured";
+}
+
+function captureReaderOrigin() {
+  if (state.readerOriginCaptured) return;
+  state.readerScrollY = window.scrollY || 0;
+  state.readerFocusStack.push(document.activeElement);
+  state.readerOriginCaptured = true;
+}
+
+function restoreReaderOrigin() {
+  var prevFocus = state.readerFocusStack.pop();
+  if (prevFocus && typeof prevFocus.focus === "function") {
+    try { prevFocus.focus(); } catch (e) { /* swallow */ }
+  }
+  state.readerFocusStack = [];
+  if (typeof window !== "undefined" && typeof window.scrollTo === "function") {
+    window.scrollTo(0, state.readerScrollY);
+  }
+  state.readerOriginCaptured = false;
+}
+
+function teardownReader(pushHistory) {
+  var wasOpen = state.readerOpen || !!state.selectedSlug;
+  var closingSlug = state.selectedSlug;
+  if (!wasOpen && !state.readerOriginCaptured) return false;
+
+  state.selectedSlug = null;
+  state.readerOpen = false;
+  state.readerPending = false;
+  if (closingSlug) emit("post-close", { slug: closingSlug });
+  if (wasOpen) emit("reader-close", {});
+  restoreReaderOrigin();
+  if (pushHistory !== false) {
+    pushUrl({ lens: state.lens }, { replace: true });
+  }
+  return true;
+}
+
 BlogController.routeFromUrl = function () {
   var params = parseUrlParams();
   if (params.post && state.postBySlug[params.post]) {
-    // Deep link to post or post-to-post navigation
-    var isNewPost = state.selectedSlug !== params.post;
+    // Select deep-linked content before readiness; the adapter explicitly
+    // renders the initial pending post after subscribing to these signals.
+    var previousSlug = state.selectedSlug;
+    var wasReaderOpen = state.readerOpen;
+    var isNewPost = previousSlug !== params.post;
     state.selectedSlug = params.post;
     state.readerOpen = true;
-    if (state.ready) {
-      if (isNewPost) {
-        emit("post-open", { slug: params.post, post: state.postBySlug[params.post] });
-        emit("reader-open", {});
+    captureReaderOrigin();
+    if (!state.ready) {
+      state.readerPending = true;
+      // Back/forward can switch posts before Boardroom.show. Rerender the
+      // new post immediately, while leaving lifecycle readiness untouched.
+      if (wasReaderOpen && previousSlug && isNewPost) {
+        BlogController.openPost(params.post);
       }
-      // Don't call openPost from routeFromUrl to avoid duplicate history pushes
+    } else if (isNewPost || !state.readerOriginCaptured) {
+      state.readerPending = true;
+      BlogController.openPost(params.post);
     }
-  } else if (params.lens) {
-    // Navigation to lens: close reader if open
-    if (state.readerOpen) {
-      var closingSlug = state.selectedSlug;
-      state.selectedSlug = null;
-      state.readerOpen = false;
-      emit("post-close", { slug: closingSlug });
-      emit("reader-close", {});
+    return;
+  }
+
+  // Every non-reader route is a full reader teardown. Popstate must not
+  // manufacture another history entry while restoring the prior origin.
+  teardownReader(false);
+
+  if (hasParam(params, "lens")) {
+    if (params.lens === "topics" && hasParam(params, "tag") && params.tag) {
+      BlogController.setFilterTag(params.tag, false);
+    } else if (params.lens === "archive" && hasParam(params, "year") && params.year) {
+      BlogController.setFilterYear(params.year, false);
+    } else {
+      BlogController.setLens(normaliseLens(params.lens), false);
     }
-    BlogController.setLens(params.lens, false);
-  } else if (params.search) {
-    // Navigation to search: close reader if open
-    if (state.readerOpen) {
-      var closingSlug = state.selectedSlug;
-      state.selectedSlug = null;
-      state.readerOpen = false;
-      emit("post-close", { slug: closingSlug });
-      emit("reader-close", {});
-    }
-    state.searchQuery = params.search;
-    BlogController.setLens("search", false);
+  } else if (hasParam(params, "search")) {
+    BlogController.setSearch(params.search, false);
+  } else {
+    BlogController.setLens("featured", false);
   }
 };
 
@@ -81890,11 +81966,24 @@ function pushUrl(params, opts) {
   }
 }
 
+function restartArchiveReplay() {
+  if (state.ready) startArchiveReplay();
+}
+
 // ---- Lens management -----------------------------------------------------
 BlogController.setLens = function (lens, pushHistory) {
+  lens = normaliseLens(lens);
+  if (state.readerOpen || state.selectedSlug || state.readerOriginCaptured) {
+    teardownReader(false);
+  }
   state.lens = lens;
   state.selectedSlug = null;
+  state.readerPending = false;
+  state.filterTag = null;
+  state.filterYear = null;
+  state.searchQuery = "";
   emit("lens-change", { lens: lens });
+  restartArchiveReplay();
   if (pushHistory !== false) {
     pushUrl({ lens: lens });
   }
@@ -81907,6 +81996,14 @@ BlogController.getPost = function (slug) { return state.postBySlug[slug] || null
 BlogController.isReady = function () { return state.ready; };
 
 // ---- Post list for the current lens --------------------------------------
+function publicationYear(post) {
+  var storedDate = String(post && post.date || "");
+  var storedPrefix = /^(\d{4})-\d{2}-\d{2}/.exec(storedDate);
+  if (storedPrefix) return storedPrefix[1];
+  var parsed = new Date(storedDate);
+  return isNaN(parsed.getTime()) ? "" : String(parsed.getUTCFullYear());
+}
+
 BlogController.getVisiblePosts = function () {
   var posts = state.posts;
   if (state.lens === "featured") {
@@ -81917,7 +82014,11 @@ BlogController.getVisiblePosts = function () {
     return posts.slice(); // already sorted latest-first by the build
   }
   if (state.lens === "archive") {
-    return posts.slice().sort(function (a, b) {
+    var year = state.filterYear;
+    var archivePosts = year ? posts.filter(function (p) {
+      return publicationYear(p) === String(year);
+    }) : posts.slice();
+    return archivePosts.sort(function (a, b) {
       return new Date(a.date) - new Date(b.date); // chronological
     });
   }
@@ -81932,11 +82033,6 @@ BlogController.getVisiblePosts = function () {
       return (p.title + " " + (p.excerpt || "") + " " + (p.tags || []).join(" ")).toLowerCase().indexOf(q) >= 0;
     });
   }
-  if (state.lens === "year") {
-    var y = state.filterYear;
-    if (!y) return posts;
-    return posts.filter(function (p) { return String(new Date(p.date).getFullYear()) === y; });
-  }
   return posts;
 };
 
@@ -81944,16 +82040,13 @@ BlogController.getVisiblePosts = function () {
 BlogController.openPost = function (slug) {
   var post = state.postBySlug[slug];
   if (!post) return;
-  // Prevent duplicate opens: if already open to this post, do nothing
-  if (state.selectedSlug === slug && state.readerOpen) return;
-  // Only capture scroll/focus on closed->open transition
-  var wasClosed = !state.readerOpen;
+  // Pending deep links are rendered by the adapter after it subscribes;
+  // ordinary opens emit the same reader signal immediately.
+  if (state.selectedSlug === slug && state.readerOpen && !state.readerPending) return;
   state.selectedSlug = slug;
   state.readerOpen = true;
-  if (wasClosed) {
-    state.readerScrollY = window.scrollY;
-    state.readerFocusStack.push(document.activeElement);
-  }
+  captureReaderOrigin();
+  state.readerPending = false;
   emit("post-open", { slug: slug, post: post });
   emit("reader-open", {}); // Signal for motion policy
   // Only push history if not already at this URL (e.g., from deep link)
@@ -81966,46 +82059,50 @@ BlogController.openPost = function (slug) {
 };
 
 BlogController.closePost = function () {
-  if (!state.selectedSlug) return;
-  var slug = state.selectedSlug;
-  state.selectedSlug = null;
-  state.readerOpen = false;
-  emit("post-close", { slug: slug });
-  emit("reader-close", {}); // Signal for motion policy
-  // Restore the lens URL.
-  pushUrl({ lens: state.lens }, { replace: true });
-  // Restore focus.
-  var prevFocus = state.readerFocusStack.pop();
-  if (prevFocus && typeof prevFocus.focus === "function") {
-    try { prevFocus.focus(); } catch (e) { /* swallow */ }
-  }
-  // Restore scroll.
-  window.scrollTo(0, state.readerScrollY);
+  teardownReader(true);
 };
 
 BlogController.getSelectedSlug = function () { return state.selectedSlug; };
 BlogController.state = state; // Expose state for testing and authoritative readerOpen
 
 // ---- Search/filter -------------------------------------------------------
-BlogController.setSearch = function (query) {
-  state.searchQuery = query;
+BlogController.setSearch = function (query, pushHistory) {
+  if (state.readerOpen || state.selectedSlug || state.readerOriginCaptured) {
+    teardownReader(false);
+  }
+  state.searchQuery = String(query == null ? "" : query);
+  state.filterTag = null;
+  state.filterYear = null;
   state.lens = "search";
-  emit("search", { query: query });
-  pushUrl({ search: query });
+  emit("search", { query: state.searchQuery });
+  restartArchiveReplay();
+  if (pushHistory !== false) pushUrl({ search: state.searchQuery });
 };
 
-BlogController.setFilterTag = function (tag) {
-  state.filterTag = tag;
+BlogController.setFilterTag = function (tag, pushHistory) {
+  if (state.readerOpen || state.selectedSlug || state.readerOriginCaptured) {
+    teardownReader(false);
+  }
+  state.filterTag = String(tag == null ? "" : tag);
+  state.filterYear = null;
+  state.searchQuery = "";
   state.lens = "topics";
-  emit("filter-tag", { tag: tag });
-  pushUrl({ lens: "topics", tag: tag });
+  emit("filter-tag", { tag: state.filterTag });
+  restartArchiveReplay();
+  if (pushHistory !== false) pushUrl({ lens: "topics", tag: state.filterTag });
 };
 
-BlogController.setFilterYear = function (year) {
-  state.filterYear = year;
+BlogController.setFilterYear = function (year, pushHistory) {
+  if (state.readerOpen || state.selectedSlug || state.readerOriginCaptured) {
+    teardownReader(false);
+  }
+  state.filterYear = String(year == null ? "" : year);
+  state.filterTag = null;
+  state.searchQuery = "";
   state.lens = "archive";
-  emit("filter-year", { year: year });
-  pushUrl({ lens: "archive", year: year });
+  emit("filter-year", { year: state.filterYear });
+  restartArchiveReplay();
+  if (pushHistory !== false) pushUrl({ lens: "archive", year: state.filterYear });
 };
 
 // ---- popstate: back/forward browser navigation ---------------------------
@@ -82095,16 +82192,112 @@ function escapeHtml(value) {
     });
 }
 
+function createDiscoveryButton(label, className, handler, current) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = className || "blog-discovery-control";
+    button.textContent = String(label == null ? "" : label);
+    button.setAttribute("aria-label", String(label == null ? "" : label));
+    if (current) button.setAttribute("aria-current", "true");
+    button.addEventListener("click", handler);
+    return button;
+}
+
+function appendDiscoveryGroup(parent, label, items, handler, currentValue) {
+    if (!items.length) return;
+    var group = document.createElement("div");
+    group.className = "blog-discovery-group";
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-label", label);
+    var heading = document.createElement("span");
+    heading.className = "blog-discovery-label";
+    heading.textContent = label;
+    group.appendChild(heading);
+    items.forEach(function (item) {
+        var value = String(item);
+        group.appendChild(createDiscoveryButton(value, "blog-discovery-option", function () {
+            handler(value);
+        }, currentValue != null && String(currentValue) === value));
+    });
+    parent.appendChild(group);
+}
+
+function renderBlogDiscovery(parent, controller) {
+    var index = controller && controller.getIndex ? controller.getIndex() : (window.BLOG_INDEX || {});
+    var currentLens = controller && controller.getLens ? controller.getLens() : blogMode;
+    var discovery = document.createElement("section");
+    discovery.className = "blog-discovery";
+    discovery.setAttribute("aria-label", "Archive discovery controls");
+
+    var heading = document.createElement("h4");
+    heading.textContent = "DISCOVERY";
+    discovery.appendChild(heading);
+
+    var lenses = document.createElement("div");
+    lenses.className = "blog-discovery-lenses";
+    lenses.setAttribute("role", "group");
+    lenses.setAttribute("aria-label", "Archive lenses");
+    [
+        ["Featured", "featured"],
+        ["Latest", "latest"],
+        ["Topics", "topics"],
+        ["Archive", "archive"],
+        ["Search", "search"]
+    ].forEach(function (entry) {
+        lenses.appendChild(createDiscoveryButton(entry[0], "blog-discovery-lens", function () {
+            if (controller && controller.setLens) controller.setLens(entry[1]);
+        }, currentLens === entry[1]));
+    });
+    discovery.appendChild(lenses);
+
+    var tagNames = index && index.tags ? Object.keys(index.tags) : [];
+    appendDiscoveryGroup(discovery, "Topics / tags", tagNames, function (tag) {
+        if (controller && controller.setFilterTag) controller.setFilterTag(tag);
+    }, controller && controller.state ? controller.state.filterTag : null);
+
+    var yearNames = index && index.archiveByYear ? Object.keys(index.archiveByYear).sort().reverse() : [];
+    appendDiscoveryGroup(discovery, "Archive / years", yearNames, function (year) {
+        if (controller && controller.setFilterYear) controller.setFilterYear(year);
+    }, controller && controller.state ? controller.state.filterYear : null);
+
+    var searchForm = document.createElement("form");
+    searchForm.className = "blog-discovery-search";
+    searchForm.setAttribute("role", "search");
+    var searchLabel = document.createElement("label");
+    searchLabel.textContent = "Search archive";
+    var searchInput = document.createElement("input");
+    searchInput.type = "search";
+    searchInput.name = "archive-search";
+    searchInput.placeholder = "Search posts";
+    searchInput.setAttribute("aria-label", "Search archive");
+    if (controller && controller.state && controller.state.lens === "search") {
+        searchInput.value = controller.state.searchQuery || "";
+    }
+    var searchButton = document.createElement("button");
+    searchButton.type = "submit";
+    searchButton.textContent = "Search";
+    searchLabel.appendChild(searchInput);
+    searchForm.appendChild(searchLabel);
+    searchForm.appendChild(searchButton);
+    searchForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        if (controller && controller.setSearch) controller.setSearch(searchInput.value.trim());
+    });
+    discovery.appendChild(searchForm);
+    parent.appendChild(discovery);
+}
+
 function renderBlogInteractions() {
-    if(streamType !== "blog" || !interactionContainer || !Boardroom.posts.length){
+    if(streamType !== "blog" || !interactionContainer){
         return;
     }
 
     // Delegate to the unified controller when available (it owns lens
-    // state). Fall back to local filtering for non-blog or pre-controller contexts.
+    // state). Fall back to local filtering for non-controller contexts.
+    var controller = window.BlogController;
     var posts;
-    if (streamType === "blog" && window.BlogController && window.BlogController.getVisiblePosts) {
-        posts = window.BlogController.getVisiblePosts();
+    if (controller && controller.getVisiblePosts) {
+        posts = controller.getVisiblePosts();
     } else {
         posts = Boardroom.posts.slice();
         if(blogMode === "featured"){
@@ -82120,7 +82313,7 @@ function renderBlogInteractions() {
     }
 
     interactionContainer.empty();
-    var selectedSlug = window.BlogController ? BlogController.getSelectedSlug() : null;
+    var selectedSlug = controller && controller.getSelectedSlug ? controller.getSelectedSlug() : null;
     posts.forEach(function(post){
         var label = [post.title, post.category, post.date, post.readTime, (post.tags || []).join(", ")].filter(Boolean).join(" — ");
         var isSelected = post.slug === selectedSlug;
@@ -82131,26 +82324,27 @@ function renderBlogInteractions() {
             '<span class="interaction-size">' + escapeHtml(post.readTime || "?") + 'm</span>' +
             '<span class="interaction-popularity">' + (post.featured ? "featured" : "archive") + '</span>' +
         '</button>');
-        
+
         // Handle keyboard activation (Enter/Space)
         row.on('keydown', function(event) {
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
-                if (window.BlogController) {
-                    window.BlogController.openPost(post.slug);
+                if (controller && controller.openPost) {
+                    controller.openPost(post.slug);
                 }
             }
         });
-        
+
         // Handle click activation
         row.on('click', function() {
-            if (window.BlogController) {
-                window.BlogController.openPost(post.slug);
+            if (controller && controller.openPost) {
+                controller.openPost(post.slug);
             }
         });
-        
+
         interactionContainer.append(row);
     });
+    renderBlogDiscovery(interactionContainer[0], controller);
 }
 
 Boardroom.renderBlogInteractions = renderBlogInteractions;
@@ -82433,9 +82627,22 @@ Boardroom.message = function(message){
     }
     
     if(interactionContainer && interactionContainer[0].lastChild){
-        var lastChild = interactionContainer[0].lastChild;
+        var interactionNode = interactionContainer[0];
+        var lastChild = interactionNode.lastChild;
+        if (streamType === "blog") {
+            for (var childIndex = interactionNode.children.length - 1; childIndex >= 0; childIndex--) {
+                var candidate = interactionNode.children[childIndex];
+                if (candidate.classList && candidate.classList.contains("blog-interaction")) {
+                    lastChild = candidate;
+                    break;
+                }
+            }
+        }
+        if (!lastChild || (streamType === "blog" && !lastChild.classList.contains("blog-interaction"))) {
+            return;
+        }
         var slugAttr = message.slug ? ' data-post-slug="' + escapeHtml(message.slug) + '"' : '';
-        var ariaCurrentAttr = (message.slug && window.BlogController && BlogController.getSelectedSlug() === message.slug) ? ' aria-current="true"' : '';
+        var ariaCurrentAttr = (message.slug && window.BlogController && window.BlogController.getSelectedSlug() === message.slug) ? ' aria-current="true"' : '';
         var label = [message.title, message.category, message.date, message.readTime, (message.tags || []).join(", ")].filter(Boolean).join(" — ");
         
         // For blog streams, replace placeholder <ul> with semantic <button>
@@ -82448,11 +82655,11 @@ Boardroom.message = function(message){
               '<span class="interaction-title">' + escapeHtml(message.title) + '</span>' +
               '<span class="interaction-type">' + escapeHtml((message.tags || []).join(", ")) + '</span>' +
               '<span class="interaction-size">' + escapeHtml(message.readTime || "?") + 'm</span>' +
-              '<span class="interaction-popularity">' + (message.popularity > 100 ? "featured" : "archive") + '</span>';
+              '<span class="interaction-popularity">' + (message.featured ? "featured" : "archive") + '</span>';
             
             if (slugAttr) button.setAttribute('data-post-slug', message.slug);
             if (ariaCurrentAttr) button.setAttribute('aria-current', 'true');
-            button.setAttribute('aria-label', escapeHtml(label));
+            button.setAttribute('aria-label', label);
             button.setAttribute('tabindex', '0');
             
             if(message.popularity > 100){
@@ -82460,6 +82667,7 @@ Boardroom.message = function(message){
             }
             
             interactionContainer[0].replaceChild(button, lastChild);
+            lastChild = button;
         } else {
             // Non-blog streams: preserve original placeholder/list behavior
             lastChild.innerHTML = 
@@ -82472,7 +82680,7 @@ Boardroom.message = function(message){
             if (slugAttr) lastChild.setAttribute('data-post-slug', message.slug);
             if (ariaCurrentAttr) lastChild.setAttribute('aria-current', 'true');
             else lastChild.removeAttribute('aria-current');
-            lastChild.setAttribute('aria-label', escapeHtml(label));
+            lastChild.setAttribute('aria-label', label);
             lastChild.setAttribute('tabindex', '0');
             lastChild.setAttribute('role', 'button');
 
@@ -82481,7 +82689,19 @@ Boardroom.message = function(message){
             }
         }
         
-        interactionContainer[0].insertBefore(interactionContainer[0].lastChild, interactionContainer[0].firstChild);
+        var firstChild = interactionNode.firstChild;
+        if (streamType === "blog") {
+            for (var firstIndex = 0; firstIndex < interactionNode.children.length; firstIndex++) {
+                var firstCandidate = interactionNode.children[firstIndex];
+                if (firstCandidate.classList && firstCandidate.classList.contains("blog-interaction")) {
+                    firstChild = firstCandidate;
+                    break;
+                }
+            }
+        }
+        if (firstChild && lastChild !== firstChild) {
+            interactionNode.insertBefore(lastChild, firstChild);
+        }
     }
 
     createZipdot(message);
@@ -83309,6 +83529,15 @@ var webglTest,
 
 /* public function */
 
+function selectBlogLens(lens) {
+    window.BLOG_LAUNCH_MODE = lens;
+    if(window.BlogController && typeof window.BlogController.setLens === "function"){
+        // Prime the authoritative controller before main initializes the
+        // boardroom, while leaving the launcher's URL untouched.
+        window.BlogController.setLens(lens, false);
+    }
+}
+
 LightTable.init = function(_hideFn){
 
     hideFn = _hideFn;
@@ -83331,7 +83560,7 @@ LightTable.init = function(_hideFn){
     /* set events */
 
     $("#lt-launch-github").click(function(){
-        window.BLOG_LAUNCH_MODE = "featured";
+        selectBlogLens("featured");
         $(this).find(".folder-big").css("background-color", "#fff");
         simulateCommand("|cd blog$");
         simulateCommand("ls$");
@@ -83341,7 +83570,7 @@ LightTable.init = function(_hideFn){
     });
 
     $("#lt-launch-wikipedia").click(function(){
-        window.BLOG_LAUNCH_MODE = "archive";
+        selectBlogLens("archive");
         $(this).find(".folder-small").css("background-color", "#fff");
         simulateCommand("|cd blog$");
         simulateCommand("ls$");
@@ -83351,18 +83580,17 @@ LightTable.init = function(_hideFn){
     });
 
     $("#lt-launch-test").click(function(){
-        window.BLOG_LAUNCH_MODE = "latest";
+        selectBlogLens("latest");
         $(this).find(".folder-small").css("background-color", "#fff");
         simulateCommand("|cd blog$");
         simulateCommand("ls$");
         simulateCommand("run blog.exe$");
         $(document).off();
         $(".folder-container").off();
-
     });
 
     $("#lt-launch-bitcoin").click(function(){
-        window.BLOG_LAUNCH_MODE = "topics";
+        selectBlogLens("topics");
         $(this).find(".folder-big").css("background-color", "#fff");
         simulateCommand("|cd blog$");
         simulateCommand("ls$");
@@ -83372,7 +83600,7 @@ LightTable.init = function(_hideFn){
     });
 
     $("#lt-launch-unknown").click(function(){
-        window.BLOG_LAUNCH_MODE = "search";
+        selectBlogLens("search");
         $(this).find(".folder-small").css("background-color", "#fff");
         simulateCommand("|cd blog$");
         simulateCommand("ls$");
@@ -83829,8 +84057,43 @@ function hideWebgl(){
     $('#lt-bandwidth').css("opacity", 0);
 }
 
-function writeResponse(txt){
-    $("#lt-command-lines").append("<div class='response'>&gt;&gt;encom-sh: " + txt + "</div>");
+function escapeHtml(value){
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function(char){
+        return {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        }[char];
+    });
+}
+
+function terminalText(text){
+    return {text: String(text == null ? "" : text)};
+}
+
+function terminalStatus(className, text){
+    return {className: className, text: String(text == null ? "" : text)};
+}
+
+function writeResponse(parts){
+    var response = document.createElement("div");
+    response.className = "response";
+    response.appendChild(document.createTextNode(">>encom-sh: "));
+    var list = Array.isArray(parts) ? parts : [terminalText(parts)];
+    list.forEach(function(part){
+        var node = document.createTextNode(String(part && part.text != null ? part.text : ""));
+        if(part && part.className){
+            var status = document.createElement("span");
+            status.className = part.className;
+            status.appendChild(node);
+            response.appendChild(status);
+        } else {
+            response.appendChild(node);
+        }
+    });
+    $("#lt-command-lines").append(response);
 }
 
 var currentDir = "encom_root";
@@ -83838,7 +84101,20 @@ var currentDir = "encom_root";
 function writePrompt(){
     $(".command-blinker").removeClass("blink").removeClass("command-blinker");
 
-    $("#lt-command-lines").append('<div class="command"><span class="prompt">encom-sh:' + currentDir + '$&nbsp;</span><span class="command-text"></span><span class="blink command-blinker">&nbsp;</span></div>');
+    var command = document.createElement("div");
+    command.className = "command";
+    var prompt = document.createElement("span");
+    prompt.className = "prompt";
+    prompt.textContent = "encom-sh:" + currentDir + "$ ";
+    var commandText = document.createElement("span");
+    commandText.className = "command-text";
+    var blinker = document.createElement("span");
+    blinker.className = "blink command-blinker";
+    blinker.textContent = " ";
+    command.appendChild(prompt);
+    command.appendChild(commandText);
+    command.appendChild(blinker);
+    $("#lt-command-lines").append(command);
 }
 
 function writeLs(exec){
@@ -83849,7 +84125,7 @@ function writeLs(exec){
             '<div class="ls">bandwidth</div>',
             '<div class="ls">framework</div>',
             '<div class="ls">@arscan</div>',
-            '<div class="ls ls-exec">' + exec + '</div>',
+            '<div class="ls ls-exec">' + escapeHtml(exec) + '</div>',
             '<div class="ls">webgl_test</div>',
             '<div class="ls">flynn_5</div>',
             '<div class="ls">&nbsp;</div>',
@@ -83886,7 +84162,7 @@ function executeCommand(commandString){
                 hideFn("blog");
             }, 500);
         } else {
-            writeResponse("<span class='alert'>Error:</span> No such file");
+            writeResponse([terminalStatus("alert", "Error:"), terminalText(" No such file")]);
             writePrompt();
         }
 
@@ -83899,7 +84175,7 @@ function executeCommand(commandString){
                 hideFn("github");
             }, 500);
         } else {
-            writeResponse("<span class='alert'>Error:</span> No such file");
+            writeResponse([terminalStatus("alert", "Error:"), terminalText(" No such file")]);
             writePrompt();
         }
 
@@ -83913,7 +84189,7 @@ function executeCommand(commandString){
             }, 500);
 
         } else {
-            writeResponse("<span class='alert'>Error:</span> No such file");
+            writeResponse([terminalStatus("alert", "Error:"), terminalText(" No such file")]);
             writePrompt();
         }
     } else if(command == "run test.exe"){
@@ -83926,7 +84202,7 @@ function executeCommand(commandString){
             }, 500);
 
         } else {
-            writeResponse("<span class='alert'>Error:</span> No such file");
+            writeResponse([terminalStatus("alert", "Error:"), terminalText(" No such file")]);
             writePrompt();
         }
 
@@ -83937,47 +84213,47 @@ function executeCommand(commandString){
             "  featured      — open the featured lens",
             "  latest        — open the latest lens (newest first)",
             "  tags          — list all tags",
-            "  tag &lt;name&gt;   — filter by tag",
-            "  year &lt;yyyy&gt;  — filter by year",
-            "  search &lt;query&gt; — search posts",
-            "  open &lt;slug&gt;  — open a post by slug",
+            "  tag <name>   — filter by tag",
+            "  year <yyyy>  — filter by year",
+            "  search <query> — search posts",
+            "  open <slug>  — open a post by slug",
             "  back          — return to the light table"
         ].join("\n"));
         writePrompt();
     } else if(currentDir == "blog" && command == "featured"){
         if(window.BlogController){ window.BlogController.setLens("featured"); }
-        writeResponse("Lens: <span class='highlight'>featured</span>");
+        writeResponse([terminalText("Lens: "), terminalStatus("highlight", "featured")]);
         writePrompt();
     } else if(currentDir == "blog" && command == "latest"){
         if(window.BlogController){ window.BlogController.setLens("latest"); }
-        writeResponse("Lens: <span class='highlight'>latest</span>");
+        writeResponse([terminalText("Lens: "), terminalStatus("highlight", "latest")]);
         writePrompt();
     } else if(currentDir == "blog" && command == "tags"){
         var tags = window.BLOG_INDEX ? Object.keys(window.BLOG_INDEX.tags || {}) : [];
-        writeResponse(tags.length ? "Tags: " + tags.join(", ") : "No tags.");
+        writeResponse(tags.length ? [terminalText("Tags: "), terminalText(tags.join(", "))] : terminalText("No tags."));
         writePrompt();
     } else if(currentDir == "blog" && command.indexOf("tag ") == 0){
         var tagName = command.slice(4).trim();
         if(window.BlogController){ window.BlogController.setFilterTag(tagName); }
-        writeResponse("Filtering by tag: <span class='highlight'>" + tagName + "</span>");
+        writeResponse([terminalText("Filtering by tag: "), terminalStatus("highlight", tagName)]);
         writePrompt();
     } else if(currentDir == "blog" && command.indexOf("year ") == 0){
         var yearName = command.slice(5).trim();
         if(window.BlogController){ window.BlogController.setFilterYear(yearName); }
-        writeResponse("Filtering by year: <span class='highlight'>" + yearName + "</span>");
+        writeResponse([terminalText("Filtering by year: "), terminalStatus("highlight", yearName)]);
         writePrompt();
     } else if(currentDir == "blog" && command.indexOf("search ") == 0){
         var query = command.slice(7).trim();
         if(window.BlogController){ window.BlogController.setSearch(query); }
-        writeResponse("Searching: <span class='highlight'>" + query + "</span>");
+        writeResponse([terminalText("Searching: "), terminalStatus("highlight", query)]);
         writePrompt();
     } else if(currentDir == "blog" && command.indexOf("open ") == 0){
         var slug = command.slice(5).trim();
         if(window.BlogController && window.BlogController.getPost(slug)){
             window.BlogController.openPost(slug);
-            writeResponse("Opening: <span class='highlight'>" + slug + "</span>");
+            writeResponse([terminalText("Opening: "), terminalStatus("highlight", slug)]);
         } else {
-            writeResponse("<span class='alert'>No post:</span> " + slug);
+            writeResponse([terminalStatus("alert", "No post:"), terminalText(" "), terminalText(slug)]);
         }
         writePrompt();
     } else if(currentDir == "blog" && command == "back"){
@@ -83989,11 +84265,11 @@ function executeCommand(commandString){
         currentDir = "blog";
         $(".folder-label").removeClass("selected");
         $("#lt-launch-github .folder-label").addClass("selected");
-        writeResponse("Changed directory to <span class='highlight'>blog</span>");
+        writeResponse([terminalText("Changed directory to "), terminalStatus("highlight", "blog")]);
         writePrompt();
 
     } else if(command == "cd github"){
-        writeResponse("<span class='alert'>Access denied</span>");
+        writeResponse([terminalStatus("alert", "Access denied")]);
         writePrompt();
 
     } else if(command == "cd wikipedia"){
@@ -84001,7 +84277,7 @@ function executeCommand(commandString){
         $(".folder-label").removeClass("selected");
         $("#lt-launch-wikipedia .folder-label").addClass("selected");
         currentDir = "wikipedia";
-        writeResponse("Changed directory to <span class='highlight'>wikipedia</span>");
+        writeResponse([terminalText("Changed directory to "), terminalStatus("highlight", "wikipedia")]);
         writePrompt();
 
     } else if(command == "cd test"){
@@ -84009,17 +84285,17 @@ function executeCommand(commandString){
         $(".folder-label").removeClass("selected");
         $("#lt-launch-test .folder-label").addClass("selected");
         currentDir = "test";
-        writeResponse("Changed directory to <span class='highlight'>test</span>");
+        writeResponse([terminalText("Changed directory to "), terminalStatus("highlight", "test")]);
         writePrompt();
     } else if(command == "cd bitcoin") {
-        writeResponse("<span class='alert'>Not yet implemented</span>");
+        writeResponse([terminalStatus("alert", "Not yet implemented")]);
         writePrompt();
     } else if(command.indexOf("cd encom") == 0 || command == "cd /"){
         currentDir = "encom_root";
-        writeResponse("Changed directory to <span class='highlight'>encom_root</span>");
+        writeResponse([terminalText("Changed directory to "), terminalStatus("highlight", "encom_root")]);
         writePrompt();
     } else if(command.indexOf("cd ") == 0){
-        writeResponse("<span class='alert'>Access denied</span>");
+        writeResponse([terminalStatus("alert", "Access denied")]);
         writePrompt();
     } else if(command.indexOf("ls") == 0 && currentDir == "encom_root"){
         writeLs();
@@ -84030,7 +84306,7 @@ function executeCommand(commandString){
         writePrompt();
 
     } else if(command.indexOf("run") == 0){
-        writeResponse("<span class='alert'>Access denied</span>");
+        writeResponse([terminalStatus("alert", "Access denied")]);
         writePrompt();
     } else {
         writeResponse("command not found");
@@ -84341,38 +84617,43 @@ MotionController.create = function(deps) {
     }
   }
   
-  // Inject and manage toggle button
+  // Manage the footer's existing reduced-effects control.
   var toggleElement = null;
   var toggleClickHandler = null;
-  
+  var createdToggle = false;
+
+  if (document.body) {
+    if (state.reducedEffects) {
+      document.body.classList.add('reduced-effects');
+    } else {
+      document.body.classList.remove('reduced-effects');
+    }
+  }
+
   if (injectToggle) {
+    toggleElement = deps.toggleElement ||
+      (typeof document.getElementById === 'function' ? document.getElementById('reduced-effects-toggle') : null);
     var globeFooter = typeof document.getElementById === 'function' ? document.getElementById('globe-footer') : null;
-    if (globeFooter) {
+    if (!toggleElement && globeFooter) {
       toggleElement = document.createElement('button');
       toggleElement.id = 'reduced-effects-toggle';
-      toggleElement.setAttribute('aria-pressed', state.reducedEffects);
       toggleElement.textContent = 'Reduced Effects';
-      
-      // Set initial body class
-      if (state.reducedEffects && document.body) {
-        document.body.classList.add('reduced-effects');
-      }
-      
+      globeFooter.appendChild(toggleElement);
+      createdToggle = true;
+    }
+
+    if (toggleElement) {
+      toggleElement.setAttribute('aria-pressed', state.reducedEffects);
       toggleClickHandler = function() {
-        var currentState = state.reducedEffects;
-        var newState = !currentState;
+        var newState = !state.reducedEffects;
         policy.setReducedEffects(newState);
         toggleElement.setAttribute('aria-pressed', newState);
       };
-      
       toggleElement.addEventListener('click', toggleClickHandler);
-      globeFooter.appendChild(toggleElement);
-      
+
       cleanupCallbacks.push(function() {
-        if (toggleElement && toggleClickHandler) {
-          toggleElement.removeEventListener('click', toggleClickHandler);
-        }
-        if (toggleElement && toggleElement.parentNode) {
+        toggleElement.removeEventListener('click', toggleClickHandler);
+        if (createdToggle && toggleElement.parentNode) {
           toggleElement.parentNode.removeChild(toggleElement);
         }
       });

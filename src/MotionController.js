@@ -103,38 +103,43 @@ MotionController.create = function(deps) {
     }
   }
   
-  // Inject and manage toggle button
+  // Manage the footer's existing reduced-effects control.
   var toggleElement = null;
   var toggleClickHandler = null;
-  
+  var createdToggle = false;
+
+  if (document.body) {
+    if (state.reducedEffects) {
+      document.body.classList.add('reduced-effects');
+    } else {
+      document.body.classList.remove('reduced-effects');
+    }
+  }
+
   if (injectToggle) {
+    toggleElement = deps.toggleElement ||
+      (typeof document.getElementById === 'function' ? document.getElementById('reduced-effects-toggle') : null);
     var globeFooter = typeof document.getElementById === 'function' ? document.getElementById('globe-footer') : null;
-    if (globeFooter) {
+    if (!toggleElement && globeFooter) {
       toggleElement = document.createElement('button');
       toggleElement.id = 'reduced-effects-toggle';
-      toggleElement.setAttribute('aria-pressed', state.reducedEffects);
       toggleElement.textContent = 'Reduced Effects';
-      
-      // Set initial body class
-      if (state.reducedEffects && document.body) {
-        document.body.classList.add('reduced-effects');
-      }
-      
+      globeFooter.appendChild(toggleElement);
+      createdToggle = true;
+    }
+
+    if (toggleElement) {
+      toggleElement.setAttribute('aria-pressed', state.reducedEffects);
       toggleClickHandler = function() {
-        var currentState = state.reducedEffects;
-        var newState = !currentState;
+        var newState = !state.reducedEffects;
         policy.setReducedEffects(newState);
         toggleElement.setAttribute('aria-pressed', newState);
       };
-      
       toggleElement.addEventListener('click', toggleClickHandler);
-      globeFooter.appendChild(toggleElement);
-      
+
       cleanupCallbacks.push(function() {
-        if (toggleElement && toggleClickHandler) {
-          toggleElement.removeEventListener('click', toggleClickHandler);
-        }
-        if (toggleElement && toggleElement.parentNode) {
+        toggleElement.removeEventListener('click', toggleClickHandler);
+        if (createdToggle && toggleElement.parentNode) {
           toggleElement.parentNode.removeChild(toggleElement);
         }
       });

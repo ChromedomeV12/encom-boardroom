@@ -321,6 +321,46 @@ async function runTests() {
   assert.strictEqual(policy5.shouldTick('boardroom'), true, 'should tick without boardroom element (no offscreen detection)');
   policy5.cleanup();
   
+  // Test 19: Existing effects control is reused without duplication
+  console.log('Test 19: Existing effects control is reused without duplication');
+  let createCount = 0;
+  let appendCount = 0;
+  let clickHandler = null;
+  const attributes = {};
+  const existingToggle = {
+    addEventListener: (event, handler) => { if (event === 'click') clickHandler = handler; },
+    removeEventListener: (event, handler) => {
+      if (event === 'click' && clickHandler === handler) clickHandler = null;
+    },
+    setAttribute: (name, value) => { attributes[name] = String(value); }
+  };
+  const toggleDocument = {
+    hidden: false,
+    body: { classList: { add: () => {}, remove: () => {} } },
+    addEventListener: fakeBrowser.document.addEventListener,
+    removeEventListener: fakeBrowser.document.removeEventListener,
+    getElementById: (id) => {
+      if (id === 'reduced-effects-toggle') return existingToggle;
+      if (id === 'globe-footer') return { appendChild: () => { appendCount++; } };
+      return null;
+    },
+    createElement: () => { createCount++; return existingToggle; }
+  };
+  fakeBrowser.localStorage.setItem('encom-reduced-effects', 'true');
+  const policy6 = MotionController.create({
+    document: toggleDocument,
+    matchMedia: fakeBrowser.matchMedia,
+    IntersectionObserver: fakeBrowser.IntersectionObserver,
+    localStorage: fakeBrowser.localStorage,
+    boardroomElement: null
+  });
+  assert.equal(createCount, 0, 'should not create a second effects control');
+  assert.equal(appendCount, 0, 'should not append an existing effects control again');
+  assert.equal(typeof clickHandler, 'function', 'should bind the existing effects control');
+  assert.equal(attributes['aria-pressed'], 'true', 'should synchronize persisted state');
+  policy6.cleanup();
+  assert.equal(clickHandler, null, 'cleanup should remove the bound handler');
+  
   console.log('All motion policy behavior tests passed');
 }
 

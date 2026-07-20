@@ -57,6 +57,16 @@ function escapeXml(value) {
     .replace(/'/g, '&apos;');
 }
 
+function escapeJsonForHtml(value) {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+
 function renderTocInline(tocTree) {
   if (!tocTree || !tocTree.length) return '';
   const renderList = (items) => {
@@ -87,10 +97,15 @@ export function renderArticlePage(post, siteUrl) {
   const canonical = `${siteUrl}/posts/${post.slug}/`;
   const ogImage = post.hero ? `${siteUrl}/blog-assets/${post.hero}` : '';
   const dateISO = post.date ? new Date(post.date).toISOString() : '';
-  const related = (post.relatedPosts || []).map((slug) => {
-    // relatedPosts is an array of slug strings; titles resolved by caller.
-    return { slug, title: slug };
-  });
+  const related = (post.relatedPosts || [])
+    .map((item) => {
+      if (typeof item === 'string') return { slug: item, title: item };
+      if (!item || typeof item !== 'object') return null;
+      const slug = String(item.slug || '').trim();
+      if (!slug) return null;
+      return { slug, title: String(item.title || slug) };
+    })
+    .filter(Boolean);
   const backlinkTitles = post.backlinks || [];
   const outgoingTitles = post.outgoingLinks || [];
 
@@ -122,7 +137,7 @@ export function renderArticlePage(post, siteUrl) {
 <meta property="og:site_name" content="ENCOM Archive">
 ${ogImage ? `<meta property="og:image" content="${escapeHtml(ogImage)}">` : ''}
 <meta name="twitter:card" content="summary">
-<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
+<script type="application/ld+json">${escapeJsonForHtml(jsonLd)}</script>
 <style>${READABLE_CSS}</style>
 </head>
 <body>

@@ -333,6 +333,18 @@
     });
   }
 
+  function isPlainPrimarySelfClick(event, link) {
+    var target = link.getAttribute('target');
+    return event.button === 0 &&
+      !event.defaultPrevented &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !link.hasAttribute('download') &&
+      (!target || target === '_self');
+  }
+
   // ---- Click delegation for post rows and in-reader links ---------------
   document.addEventListener('click', function (event) {
     var trigger = event.target.closest('[data-post-slug]');
@@ -343,6 +355,24 @@
       if (ctrl) ctrl.openPost(slug);
       else openReaderLocal(slug);
       return;
+    }
+    var canonicalLink = event.target.closest('a[href^="/posts/"]');
+    if (canonicalLink && isPlainPrimarySelfClick(event, canonicalLink)) {
+      var canonicalMatch = canonicalLink.getAttribute('href').match(/^\/posts\/([^/#?]+)\/?(?:#([^?]+))?$/);
+      var canonicalSlug = canonicalMatch ? decodeURIComponent(canonicalMatch[1]) : '';
+      if (canonicalMatch && postBySlug[canonicalSlug]) {
+        event.preventDefault();
+        if (ctrl) ctrl.openPost(canonicalSlug);
+        else openReaderLocal(canonicalSlug);
+        if (canonicalMatch[2]) {
+          var headingId = decodeURIComponent(canonicalMatch[2]);
+          window.setTimeout(function () {
+            var heading = document.getElementById(headingId);
+            if (heading && typeof heading.scrollIntoView === 'function') heading.scrollIntoView();
+          }, 0);
+        }
+        return;
+      }
     }
     var link = event.target.closest('a[href*="post="]');
     if (link) {
@@ -390,6 +420,9 @@
     document.body.classList.add('blog-flex');
     installLightTableContent();
     wireTerminalForm();
+    if (ctrl && ctrl.renderPendingPost) {
+      ctrl.renderPendingPost();
+    }
   }
 
   if (document.readyState === 'loading') {

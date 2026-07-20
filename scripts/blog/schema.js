@@ -65,7 +65,11 @@ function toOptionalString(value) {
 export function normalizePostMeta(raw, fileMeta, diagnostics) {
   const ctx = fileMeta.relPath || fileMeta.slug || 'post';
   const title = toOptionalString(raw.title) || fileMeta.basename || 'Untitled';
-  const slug = toOptionalString(raw.slug) || slugify(title) || fileMeta.basename;
+  const explicitSlug = toOptionalString(raw.slug);
+  const generatedSlug = slugify(title) || slugify(fileMeta.basename);
+  // Slugs are path segments, not arbitrary route fragments. Normalize explicit
+  // values through the same Unicode-aware slugifier used for title fallbacks.
+  const slug = explicitSlug ? slugify(explicitSlug) || generatedSlug : generatedSlug;
 
   const date = toValidDate(raw.date, diagnostics, ctx);
   const updated = toValidDate(raw.updated, diagnostics, ctx);

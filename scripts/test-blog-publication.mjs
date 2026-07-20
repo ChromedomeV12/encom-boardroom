@@ -92,6 +92,9 @@ Beta body.
   assert.match(alphaHtml, /Body text\./);
   // Embed resolved
   assert.match(alphaHtml, /blog-assets\/attachments\/panel\.svg/);
+  assert.match(alphaHtml, /src="\/blog-assets\/attachments\/panel\.svg"/, 'nested article assets use root-relative URLs');
+  assert.doesNotMatch(alphaHtml, /\[object Object\]/, 'resolved related posts must not be wrapped twice');
+  assert.match(alphaHtml, /href="\/posts\/beta-signal\/">Beta Signal<\/a>/, 'related posts use canonical article links');
   // Open in Boardroom link
   assert.match(alphaHtml, /\/\?post=alpha-signal/);
   // NO external script tags (JSON-LD is allowed; no runtime JS)
@@ -103,6 +106,28 @@ Beta body.
   const betaHtml = await readFile(path.join(outDir, 'posts', 'beta-signal', 'index.html'), 'utf8');
   assert.match(betaHtml, /Linked From/);
   assert.match(betaHtml, /alpha-signal/);
+}
+
+// --- Test 2: JSON-LD is escaped for an HTML script context ---------------
+async function testJsonLdEscapesScriptContext() {
+  const root = await fixtureRoot('jsonld-escape');
+  const title = '</script><script>alert(1)</script>';
+  await writePost(root, 'ld.md', `---
+title: '${title}'
+date: 2026-06-15
+---
+Body.`);
+  const outDir = await runPublish(root);
+  const html = await readFile(path.join(outDir, 'posts', 'script-script-alert-1-script', 'index.html'), 'utf8');
+  const scriptStart = '<script type="application/ld+json">';
+  const start = html.indexOf(scriptStart);
+  assert.ok(start >= 0, 'JSON-LD script must be present');
+  const payloadStart = start + scriptStart.length;
+  const end = html.indexOf('</script>', payloadStart);
+  assert.ok(end > payloadStart, 'JSON-LD script must have a closing tag');
+  const payload = html.slice(payloadStart, end);
+  assert.doesNotMatch(payload, /</, 'JSON-LD must not contain raw less-than characters');
+  assert.equal(JSON.parse(payload).headline, title);
 }
 
 // --- Test 2: RSS feed is valid XML with items ----------------------------
@@ -218,9 +243,10 @@ Paragraph with **bold** and *italic* and \`code\`.
 }
 
 await testArticlePagesGenerated();
+await testJsonLdEscapesScriptContext();
 await testRssFeedValid();
 await testSitemapComplete();
 await testDiscoveryPagesGenerated();
 await testManifestValid();
 await testNoJsReadability();
-console.log('blog publication tests passed (6 tests)');
+console.log('blog publication tests passed (7 tests)');

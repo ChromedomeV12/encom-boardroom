@@ -10,11 +10,66 @@ const DANGEROUS_ELEMENTS = new Set([
   'link', 'meta', 'base', 'form'
 ]);
 
-
 // URL schemes that are safe to allow in href/src.
 const SAFE_URL_SCHEMES = new Set([
   'http', 'https', 'mailto', 'tel', 'ftp', 'ftps'
 ]);
+
+
+// Named references whose decoded values can affect URL parsing. The HTML
+// standard has many typographic names; these ASCII/control names are the
+// complete security-relevant subset for scheme and whitespace checks.
+const NAMED_CHARACTER_REFERENCES = new Map([
+  ['amp', '&'], ['apos', "'"], ['ast', '*'], ['bsol', '\\'],
+  ['colon', ':'], ['comma', ','], ['commat', '@'], ['dollar', '$'],
+  ['diacriticalgrave', '`'], ['equals', '='], ['excl', '!'],
+  ['fjlig', 'fj'], ['grave', '`'], ['gt', '>'], ['hat', '^'],
+  ['lbrace', '{'], ['lbrack', '['], ['lpar', '('], ['lt', '<'],
+  ['lowbar', '_'], ['midast', '*'], ['nbsp', '\u00a0'], ['newline', '\n'],
+  ['num', '#'], ['percnt', '%'], ['period', '.'], ['plus', '+'],
+  ['quest', '?'], ['quot', '"'], ['rbrace', '}'], ['rbrack', ']'],
+  ['rpar', ')'], ['semi', ';'], ['sol', '/'], ['tab', '\t'],
+  ['underbar', '_'], ['verbar', '|'], ['vert', '|'], ['verticalline', '|']
+]);
+
+/**
+ * Decode numeric and named HTML character references before URL parsing.
+ * Multiple passes handle safely encoded ampersands such as "&amp;#x6a;".
+ */
+function decodeHtmlReferences(value) {
+  let decoded = value;
+  for (let pass = 0; pass < 3; pass += 1) {
+    let changed = false;
+    const next = decoded.replace(
+      /&(#(?:x[0-9a-f]+|[0-9]+)|[a-z][a-z0-9]+);?/gi,
+      (match, reference) => {
+        if (reference[0] === '#') {
+          const hexadecimal = /^#x/i.test(reference);
+          const digits = hexadecimal ? reference.slice(2) : reference.slice(1);
+          const codePoint = Number.parseInt(digits, hexadecimal ? 16 : 10);
+          if (
+            !Number.isFinite(codePoint) ||
+            codePoint <= 0 ||
+            codePoint > 0x10ffff ||
+            (codePoint >= 0xd800 && codePoint <= 0xdfff)
+          ) {
+            changed = true;
+            return '\ufffd';
+          }
+          changed = true;
+          return String.fromCodePoint(codePoint);
+        }
+        const replacement = NAMED_CHARACTER_REFERENCES.get(reference.toLowerCase());
+        if (replacement == null) return match;
+        changed = true;
+        return replacement;
+      }
+    );
+    decoded = next;
+    if (!changed) break;
+  }
+  return decoded;
+}
 
 /**
  * Normalize and validate a URL for use in href/src.
@@ -25,23 +80,19 @@ export function sanitizeUrl(url) {
   if (url == null) return '';
   const str = String(url).trim();
   if (!str) return '';
-  // Decode HTML entities that might hide a scheme.
-  const decoded = str
-    .replace(/&amp;/g, '&')
-    .replace(/&#0*106;|&#x0*6a;/gi, 'j')
-    .replace(/&colon;/gi, ':')
-    .replace(/&tab;|&NewLine;/gi, '');
+  // Decode all HTML references that might hide a scheme.
+  const decoded = decodeHtmlReferences(str);
   // Strip whitespace/control chars that can hide the scheme from parsers.
-  const controlStripped = decoded.replace(/[\x00-\x20]+/g, '');
+  const controlStripped = decoded.replace(/[\s\u0000-\u001f\u007f-\u009f]+/gu, '');
   const schemeMatch = controlStripped.match(/^([a-zA-Z][a-zA-Z0-9+.\-]*):/);
   if (schemeMatch) {
     const scheme = schemeMatch[1].toLowerCase();
     if (!SAFE_URL_SCHEMES.has(scheme)) return '';
   }
-  // Block anything that looks like it's trying to be javascript: after decoding
-  // even if the scheme regex didn't catch it (e.g. "java\tscript:").
-  if (/j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:/i.test(decoded)) return '';
-  if (/v\s*b\s*s\s*c\s*r\s*i\s*p\s*t\s*:/i.test(decoded)) return '';
+  // Block anything that looks like it's trying to be javascript: after
+  // decoding even if the scheme regex did not catch it.
+  if (/j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:/i.test(controlStripped)) return '';
+  if (/v\s*b\s*s\s*c\s*r\s*i\s*p\s*t\s*:/i.test(controlStripped)) return '';
   return str;
 }
 

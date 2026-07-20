@@ -25,6 +25,8 @@ var state = {
   index: {},                // window.BLOG_INDEX
   postBySlug: {},
   readerOpen: false,
+  readerPending: false,     // deep-link/requested reader awaiting lifecycle readiness
+  readerOriginCaptured: false,
   readerFocusStack: [],     // focus restoration stack
   readerScrollY: 0,         // scroll position before reader opened
   signalListeners: []
@@ -46,17 +48,26 @@ function emit(eventType, payload) {
 }
 
 BlogController.emit = emit;
-
-// ---- Initialization ------------------------------------------------------
 BlogController.init = function (posts, index) {
   state.ready = false;  // re-init implies a fresh boardroom lifecycle
+  BlogController.stopArchiveReplay();
+  state.lens = "featured";
+  state.selectedSlug = null;
+  state.searchQuery = "";
+  state.filterTag = null;
+  state.filterYear = null;
+  state.readerOpen = false;
+  state.readerPending = false;
+  state.readerOriginCaptured = false;
+  state.readerFocusStack = [];
+  state.readerScrollY = 0;
   state.posts = posts || [];
   state.index = index || {};
   state.postBySlug = {};
   for (var i = 0; i < state.posts.length; i++) {
     state.postBySlug[state.posts[i].slug] = state.posts[i];
   }
-  // Parse the initial URL for a deep-linked post.
+  // Parse the initial URL for a deep-linked post or discovery lens.
   BlogController.routeFromUrl();
 };
 
@@ -65,12 +76,18 @@ BlogController.onBoardroomReady = function () {
   if (state.ready) return;
   state.ready = true;
   emit("ready", { lens: state.lens, postCount: state.posts.length });
-  // Start archive replay at a controlled cadence.
+  // Start archive replay at a controlled cadence once Boardroom.show reports readiness.
   startArchiveReplay();
-  // If a post was deep-linked, open it now that the boardroom is ready.
-  if (state.selectedSlug) {
-    BlogController.openPost(state.selectedSlug);
+};
+
+// Render an initial deep-linked post after the adapter has subscribed to
+// controller signals, without changing boardroom lifecycle state.
+BlogController.renderPendingPost = function () {
+  if (!state.readerPending || !state.selectedSlug || !state.postBySlug[state.selectedSlug]) {
+    return false;
   }
+  BlogController.openPost(state.selectedSlug);
+  return true;
 };
 
 // ---- BlogSignal / archive replay ----------------------------------------
@@ -88,6 +105,10 @@ function postToSignal(post) {
     title: post.title,
     type: (post.tags && post.tags[0]) || post.category || "post",
     size: post.readTime ? post.readTime + "m" : "",
+    category: post.category || "Notes",
+    tags: (post.tags || []).slice(),
+    readTime: post.readTime || 0,
+    featured: !!post.featured,
     popularity: post.linkDegree || 0,
     latlon: post.location ? { lat: post.location.lat, lon: post.location.lng } : null,
     location: post.location ? (post.location.label || post.location.lat + "," + post.location.lng) : "",
@@ -102,7 +123,7 @@ function postToSignal(post) {
 function startArchiveReplay() {
   clearInterval(replayTimer);
   replayIndex = 0;
-  var posts = state.posts;
+  var posts = BlogController.getVisiblePosts();
   if (!posts.length) return;
   // Replay one signal every 1.2s. The boardroom reacts to each.
   replayTimer = setInterval(function () {
@@ -140,48 +161,103 @@ function parseUrlParams() {
   var pairs = search.split("&");
   for (var i = 0; i < pairs.length; i++) {
     var eq = pairs[i].indexOf("=");
-    var key = eq >= 0 ? pairs[i].slice(0, eq) : pairs[i];
-    var val = eq >= 0 ? decodeURIComponent(pairs[i].slice(eq + 1)) : "";
+    var rawKey = eq >= 0 ? pairs[i].slice(0, eq) : pairs[i];
+    var rawValue = eq >= 0 ? pairs[i].slice(eq + 1) : "";
+    var key;
+    var val;
+    try { key = decodeURIComponent(rawKey); } catch (e) { key = rawKey; }
+    try { val = decodeURIComponent(rawValue); } catch (e) { val = rawValue; }
     params[key] = val;
   }
   return params;
 }
 
+function hasParam(params, key) {
+  return Object.prototype.hasOwnProperty.call(params, key);
+}
+
+function normaliseLens(lens) {
+  var known = { featured: true, latest: true, topics: true, archive: true, search: true };
+  return known[lens] ? lens : "featured";
+}
+
+function captureReaderOrigin() {
+  if (state.readerOriginCaptured) return;
+  state.readerScrollY = window.scrollY || 0;
+  state.readerFocusStack.push(document.activeElement);
+  state.readerOriginCaptured = true;
+}
+
+function restoreReaderOrigin() {
+  var prevFocus = state.readerFocusStack.pop();
+  if (prevFocus && typeof prevFocus.focus === "function") {
+    try { prevFocus.focus(); } catch (e) { /* swallow */ }
+  }
+  state.readerFocusStack = [];
+  if (typeof window !== "undefined" && typeof window.scrollTo === "function") {
+    window.scrollTo(0, state.readerScrollY);
+  }
+  state.readerOriginCaptured = false;
+}
+
+function teardownReader(pushHistory) {
+  var wasOpen = state.readerOpen || !!state.selectedSlug;
+  var closingSlug = state.selectedSlug;
+  if (!wasOpen && !state.readerOriginCaptured) return false;
+
+  state.selectedSlug = null;
+  state.readerOpen = false;
+  state.readerPending = false;
+  if (closingSlug) emit("post-close", { slug: closingSlug });
+  if (wasOpen) emit("reader-close", {});
+  restoreReaderOrigin();
+  if (pushHistory !== false) {
+    pushUrl({ lens: state.lens }, { replace: true });
+  }
+  return true;
+}
+
 BlogController.routeFromUrl = function () {
   var params = parseUrlParams();
   if (params.post && state.postBySlug[params.post]) {
-    // Deep link to post or post-to-post navigation
-    var isNewPost = state.selectedSlug !== params.post;
+    // Select deep-linked content before readiness; the adapter explicitly
+    // renders the initial pending post after subscribing to these signals.
+    var previousSlug = state.selectedSlug;
+    var wasReaderOpen = state.readerOpen;
+    var isNewPost = previousSlug !== params.post;
     state.selectedSlug = params.post;
     state.readerOpen = true;
-    if (state.ready) {
-      if (isNewPost) {
-        emit("post-open", { slug: params.post, post: state.postBySlug[params.post] });
-        emit("reader-open", {});
+    captureReaderOrigin();
+    if (!state.ready) {
+      state.readerPending = true;
+      // Back/forward can switch posts before Boardroom.show. Rerender the
+      // new post immediately, while leaving lifecycle readiness untouched.
+      if (wasReaderOpen && previousSlug && isNewPost) {
+        BlogController.openPost(params.post);
       }
-      // Don't call openPost from routeFromUrl to avoid duplicate history pushes
+    } else if (isNewPost || !state.readerOriginCaptured) {
+      state.readerPending = true;
+      BlogController.openPost(params.post);
     }
-  } else if (params.lens) {
-    // Navigation to lens: close reader if open
-    if (state.readerOpen) {
-      var closingSlug = state.selectedSlug;
-      state.selectedSlug = null;
-      state.readerOpen = false;
-      emit("post-close", { slug: closingSlug });
-      emit("reader-close", {});
+    return;
+  }
+
+  // Every non-reader route is a full reader teardown. Popstate must not
+  // manufacture another history entry while restoring the prior origin.
+  teardownReader(false);
+
+  if (hasParam(params, "lens")) {
+    if (params.lens === "topics" && hasParam(params, "tag") && params.tag) {
+      BlogController.setFilterTag(params.tag, false);
+    } else if (params.lens === "archive" && hasParam(params, "year") && params.year) {
+      BlogController.setFilterYear(params.year, false);
+    } else {
+      BlogController.setLens(normaliseLens(params.lens), false);
     }
-    BlogController.setLens(params.lens, false);
-  } else if (params.search) {
-    // Navigation to search: close reader if open
-    if (state.readerOpen) {
-      var closingSlug = state.selectedSlug;
-      state.selectedSlug = null;
-      state.readerOpen = false;
-      emit("post-close", { slug: closingSlug });
-      emit("reader-close", {});
-    }
-    state.searchQuery = params.search;
-    BlogController.setLens("search", false);
+  } else if (hasParam(params, "search")) {
+    BlogController.setSearch(params.search, false);
+  } else {
+    BlogController.setLens("featured", false);
   }
 };
 
@@ -200,11 +276,24 @@ function pushUrl(params, opts) {
   }
 }
 
+function restartArchiveReplay() {
+  if (state.ready) startArchiveReplay();
+}
+
 // ---- Lens management -----------------------------------------------------
 BlogController.setLens = function (lens, pushHistory) {
+  lens = normaliseLens(lens);
+  if (state.readerOpen || state.selectedSlug || state.readerOriginCaptured) {
+    teardownReader(false);
+  }
   state.lens = lens;
   state.selectedSlug = null;
+  state.readerPending = false;
+  state.filterTag = null;
+  state.filterYear = null;
+  state.searchQuery = "";
   emit("lens-change", { lens: lens });
+  restartArchiveReplay();
   if (pushHistory !== false) {
     pushUrl({ lens: lens });
   }
@@ -217,6 +306,14 @@ BlogController.getPost = function (slug) { return state.postBySlug[slug] || null
 BlogController.isReady = function () { return state.ready; };
 
 // ---- Post list for the current lens --------------------------------------
+function publicationYear(post) {
+  var storedDate = String(post && post.date || "");
+  var storedPrefix = /^(\d{4})-\d{2}-\d{2}/.exec(storedDate);
+  if (storedPrefix) return storedPrefix[1];
+  var parsed = new Date(storedDate);
+  return isNaN(parsed.getTime()) ? "" : String(parsed.getUTCFullYear());
+}
+
 BlogController.getVisiblePosts = function () {
   var posts = state.posts;
   if (state.lens === "featured") {
@@ -227,7 +324,11 @@ BlogController.getVisiblePosts = function () {
     return posts.slice(); // already sorted latest-first by the build
   }
   if (state.lens === "archive") {
-    return posts.slice().sort(function (a, b) {
+    var year = state.filterYear;
+    var archivePosts = year ? posts.filter(function (p) {
+      return publicationYear(p) === String(year);
+    }) : posts.slice();
+    return archivePosts.sort(function (a, b) {
       return new Date(a.date) - new Date(b.date); // chronological
     });
   }
@@ -242,11 +343,6 @@ BlogController.getVisiblePosts = function () {
       return (p.title + " " + (p.excerpt || "") + " " + (p.tags || []).join(" ")).toLowerCase().indexOf(q) >= 0;
     });
   }
-  if (state.lens === "year") {
-    var y = state.filterYear;
-    if (!y) return posts;
-    return posts.filter(function (p) { return String(new Date(p.date).getFullYear()) === y; });
-  }
   return posts;
 };
 
@@ -254,16 +350,13 @@ BlogController.getVisiblePosts = function () {
 BlogController.openPost = function (slug) {
   var post = state.postBySlug[slug];
   if (!post) return;
-  // Prevent duplicate opens: if already open to this post, do nothing
-  if (state.selectedSlug === slug && state.readerOpen) return;
-  // Only capture scroll/focus on closed->open transition
-  var wasClosed = !state.readerOpen;
+  // Pending deep links are rendered by the adapter after it subscribes;
+  // ordinary opens emit the same reader signal immediately.
+  if (state.selectedSlug === slug && state.readerOpen && !state.readerPending) return;
   state.selectedSlug = slug;
   state.readerOpen = true;
-  if (wasClosed) {
-    state.readerScrollY = window.scrollY;
-    state.readerFocusStack.push(document.activeElement);
-  }
+  captureReaderOrigin();
+  state.readerPending = false;
   emit("post-open", { slug: slug, post: post });
   emit("reader-open", {}); // Signal for motion policy
   // Only push history if not already at this URL (e.g., from deep link)
@@ -276,46 +369,50 @@ BlogController.openPost = function (slug) {
 };
 
 BlogController.closePost = function () {
-  if (!state.selectedSlug) return;
-  var slug = state.selectedSlug;
-  state.selectedSlug = null;
-  state.readerOpen = false;
-  emit("post-close", { slug: slug });
-  emit("reader-close", {}); // Signal for motion policy
-  // Restore the lens URL.
-  pushUrl({ lens: state.lens }, { replace: true });
-  // Restore focus.
-  var prevFocus = state.readerFocusStack.pop();
-  if (prevFocus && typeof prevFocus.focus === "function") {
-    try { prevFocus.focus(); } catch (e) { /* swallow */ }
-  }
-  // Restore scroll.
-  window.scrollTo(0, state.readerScrollY);
+  teardownReader(true);
 };
 
 BlogController.getSelectedSlug = function () { return state.selectedSlug; };
 BlogController.state = state; // Expose state for testing and authoritative readerOpen
 
 // ---- Search/filter -------------------------------------------------------
-BlogController.setSearch = function (query) {
-  state.searchQuery = query;
+BlogController.setSearch = function (query, pushHistory) {
+  if (state.readerOpen || state.selectedSlug || state.readerOriginCaptured) {
+    teardownReader(false);
+  }
+  state.searchQuery = String(query == null ? "" : query);
+  state.filterTag = null;
+  state.filterYear = null;
   state.lens = "search";
-  emit("search", { query: query });
-  pushUrl({ search: query });
+  emit("search", { query: state.searchQuery });
+  restartArchiveReplay();
+  if (pushHistory !== false) pushUrl({ search: state.searchQuery });
 };
 
-BlogController.setFilterTag = function (tag) {
-  state.filterTag = tag;
+BlogController.setFilterTag = function (tag, pushHistory) {
+  if (state.readerOpen || state.selectedSlug || state.readerOriginCaptured) {
+    teardownReader(false);
+  }
+  state.filterTag = String(tag == null ? "" : tag);
+  state.filterYear = null;
+  state.searchQuery = "";
   state.lens = "topics";
-  emit("filter-tag", { tag: tag });
-  pushUrl({ lens: "topics", tag: tag });
+  emit("filter-tag", { tag: state.filterTag });
+  restartArchiveReplay();
+  if (pushHistory !== false) pushUrl({ lens: "topics", tag: state.filterTag });
 };
 
-BlogController.setFilterYear = function (year) {
-  state.filterYear = year;
+BlogController.setFilterYear = function (year, pushHistory) {
+  if (state.readerOpen || state.selectedSlug || state.readerOriginCaptured) {
+    teardownReader(false);
+  }
+  state.filterYear = String(year == null ? "" : year);
+  state.filterTag = null;
+  state.searchQuery = "";
   state.lens = "archive";
-  emit("filter-year", { year: year });
-  pushUrl({ lens: "archive", year: year });
+  emit("filter-year", { year: state.filterYear });
+  restartArchiveReplay();
+  if (pushHistory !== false) pushUrl({ lens: "archive", year: state.filterYear });
 };
 
 // ---- popstate: back/forward browser navigation ---------------------------

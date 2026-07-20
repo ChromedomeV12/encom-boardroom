@@ -24,13 +24,13 @@ assert.doesNotThrow(() => new Function(lightTable), 'LightTable source should pa
 
 assert.match(lightTable, /simulateCommand\("\|cd blog\$"\)/, 'featured folder should type cd blog');
 assert.match(lightTable, /simulateCommand\("run blog\.exe\$"\)/, 'featured folder should type run blog.exe');
-assert.match(lightTable, /BLOG_LAUNCH_MODE = "featured"/, 'featured folder should set featured mode');
-assert.match(lightTable, /BLOG_LAUNCH_MODE = "latest"/, 'latest folder should set latest mode');
-assert.match(lightTable, /BLOG_LAUNCH_MODE = "archive"/, 'archive folder should set archive mode');
+assert.match(lightTable, /function selectBlogLens\(lens\)/, 'folders should share one blog lens selector');
+assert.match(lightTable, /BLOG_LAUNCH_MODE = lens/, 'folder selector should preserve launch mode compatibility');
+assert.match(lightTable, /BlogController\.setLens\(lens, false\)/, 'folder selector should update controller state before launch');
 assert.match(lightTable, /command == "run blog\.exe"/, 'terminal should execute blog.exe');
 assert.match(lightTable, /currentDir == "blog"/, 'terminal should track blog directory');
-assert.match(lightTable, /BLOG_LAUNCH_MODE = "topics"/, 'topics folder should set topics mode');
-assert.match(lightTable, /BLOG_LAUNCH_MODE = "search"/, 'search folder should set search mode');
+assert.match(lightTable, /selectBlogLens\("topics"\)/, 'topics folder should prime controller lens before launch');
+assert.match(lightTable, /selectBlogLens\("search"\)/, 'search folder should prime controller lens before launch');
 assert.match(lightTable, /command == "help"/, 'terminal should support help command');
 assert.match(lightTable, /command == "featured"/, 'terminal should support featured command');
 assert.match(lightTable, /command == "latest"/, 'terminal should support latest command');
@@ -41,6 +41,19 @@ assert.match(lightTable, /command\.indexOf\("search "\)/, 'terminal should suppo
 assert.match(lightTable, /command\.indexOf\("open "\)/, 'terminal should support open command');
 assert.match(lightTable, /command == "back"/, 'terminal should support back command');
 
+assert.match(lightTable, /selectBlogLens\("featured"\)/, 'featured folder should prime controller lens before launch');
+assert.match(lightTable, /selectBlogLens\("latest"\)/, 'latest folder should prime controller lens before launch');
+assert.match(lightTable, /selectBlogLens\("topics"\)/, 'topics folder should prime controller lens before launch');
+assert.match(lightTable, /selectBlogLens\("archive"\)/, 'archive folder should prime controller lens before launch');
+assert.match(lightTable, /selectBlogLens\("search"\)/, 'search folder should prime controller lens before launch');
+assert.match(boardroom, /blog-discovery/, 'boardroom should expose discovery controls');
+assert.match(boardroom, /getIndex\(\)/, 'discovery controls should use BLOG_INDEX through the controller');
+assert.match(boardroom, /setFilterTag/, 'topics discovery should select tags');
+assert.match(boardroom, /setFilterYear/, 'archive discovery should select years');
+assert.match(boardroom, /setSearch/, 'search discovery should submit queries');
+assert.match(lightTable, /terminalStatus/, 'terminal should retain fixed semantic status markup without raw interpolation');
+assert.doesNotMatch(lightTable, /writeResponse\([\s\S]{0,180}\+\s*(tagName|yearName|query|slug)/, 'terminal dynamic values should not be interpolated as HTML');
+assert.match(lightTable, /escapeHtml/, 'terminal dynamic responses should escape user input');
 assert.match(main, /view === "blog"/, 'main switch should support blog stream');
 assert.match(main, /screensaver\.text\("BLOG"\)/, 'blog stream should use BLOG screensaver');
 assert.match(main, /Boardroom\.init\("blog", window\.BLOG_POSTS[^;]+BLOG_LAUNCH_MODE/, 'blog stream should initialize boardroom with posts and launch mode');
@@ -80,6 +93,9 @@ assert.match(controller, /archive-signal/, 'controller should emit archive signa
 assert.match(controller, /postToSignal/, 'controller should convert posts to archive signals');
 assert.match(controller, /startArchiveReplay/, 'controller should start archive replay');
 assert.match(controller, /ARCHIVE REPLAY|archiveReplay/, 'controller should label replay honestly');
+assert.match(controller, /renderPendingPost\s*=/, 'controller should expose a pending deep-link render operation');
+assert.match(controller, /getUTCFullYear/, 'archive year fallback should use UTC');
+assert.doesNotMatch(controller, /new Date\(p\.date\)\.getFullYear\(\)/, 'archive filtering must not use local getFullYear');
 assert.match(boardroom, /ARCHIVE REPLAY/, 'boardroom should label the feed as ARCHIVE REPLAY');
 assert.match(boardroom, /ARCHIVE GEOGRAPHY/, 'boardroom should label globalization as archive geography');
 assert.match(boardroom, /ARCHIVE GROWTH/, 'boardroom should label growth as archive growth');
@@ -109,6 +125,30 @@ assert.doesNotMatch(adapter, /boardroom-readme-test/, 'adapter should not overwr
 assert.match(adapter, /classList\.add\('blog-flex'\)/, 'adapter should enable blog responsive layout class');
 assert.doesNotMatch(adapter, /renderPostCard/, 'adapter fallback should not use rejected thread-card stream UI');
 assert.match(adapter, /\\?post=/, 'reader should use query-param post URLs');
+const adapterBoot = adapter.slice(adapter.indexOf('// ---- Boot:'));
+assert.match(
+  adapterBoot,
+  /renderPendingPost\(\)/,
+  'adapter boot should render an initial deep-linked post after signal subscriptions',
+);
+assert.doesNotMatch(
+  adapterBoot,
+  /onBoardroomReady\(/,
+  'adapter boot must not mark boardroom ready before Boardroom.show',
+);
+assert.match(
+  adapter,
+  /canonicalLink[\s\S]{0,240}canonicalMatch/,
+  'runtime reader should intercept canonical cross-post article links',
+);
+assert.match(adapter, /event\.button\s*===\s*0/, 'canonical links should require primary clicks');
+assert.match(adapter, /event\.defaultPrevented/, 'canonical links should respect prior preventDefault');
+assert.match(adapter, /event\.metaKey/, 'canonical links should preserve command-click navigation');
+assert.match(adapter, /event\.ctrlKey/, 'canonical links should preserve ctrl-click navigation');
+assert.match(adapter, /event\.shiftKey/, 'canonical links should preserve shift-click navigation');
+assert.match(adapter, /event\.altKey/, 'canonical links should preserve alt-click navigation');
+assert.match(adapter, /hasAttribute\(['"]download['"]\)/, 'canonical links should preserve downloads');
+assert.match(adapter, /target\s*===\s*['_"]_self['"]/, 'canonical links should preserve targeted navigation');
 assert.match(adapter, /Escape/, 'reader should close on Escape key');
 assert.match(adapter, /LINKED FROM/, 'reader should render backlinks');
 assert.match(adapter, /LINKS OUT/, 'reader should render outgoing links');
@@ -153,6 +193,191 @@ assert.match(adapter, /closeBtn|focusable\[0\]/, 'adapter should redirect to clo
 assert.match(boardroom, /createElement.*button/, 'Boardroom.message should create button elements for blog streams');
 assert.match(boardroom, /replaceChild.*button.*lastChild/, 'Boardroom.message should replace placeholder with button for blog streams');
 assert.match(boardroom, /streamType === "blog"/, 'Boardroom.message should check stream type before button replacement');
+const messageRuntime = boardroom.slice(
+  boardroom.indexOf('Boardroom.message = function(message){'),
+  boardroom.indexOf('Boardroom.resize = function(){'),
+);
+const blogMessageStart = messageRuntime.indexOf('// For blog streams, replace placeholder <ul> with semantic <button>');
+const blogMessageEnd = messageRuntime.indexOf('        } else {', blogMessageStart);
+const blogMessageBranch = messageRuntime.slice(blogMessageStart, blogMessageEnd);
+const nonBlogMessageBranch = messageRuntime.slice(blogMessageEnd);
+
+assert.match(
+  blogMessageBranch,
+  /message\.featured\s*\?\s*"featured"\s*:\s*"archive"/,
+  'blog replay should derive its status from message.featured',
+);
+assert.match(
+  nonBlogMessageBranch,
+  /message\.popularity\s*>\s*100\s*\?\s*"featured"\s*:\s*"archive"/,
+  'non-blog replay should retain popularity-derived status',
+);
+assert.doesNotMatch(
+  nonBlogMessageBranch,
+  /message\.featured/,
+  'non-blog replay should not depend on blog-only featured metadata',
+);
+assert.match(
+  messageRuntime,
+  /replaceChild\(button,\s*lastChild\);\s*lastChild\s*=\s*button;/,
+  'blog replay should reorder the replacement button, not the detached placeholder',
+);
+
+function runtimeNode(className) {
+  const attributes = Object.create(null);
+  const node = {
+    className,
+    innerHTML: '',
+    parentNode: null,
+    classList: {
+      contains(name) {
+        return node.className.split(/\s+/).includes(name);
+      },
+    },
+    setAttribute(name, value) {
+      attributes[name] = String(value);
+    },
+    removeAttribute(name) {
+      delete attributes[name];
+    },
+    getAttribute(name) {
+      return attributes[name] || null;
+    },
+  };
+  return node;
+}
+
+function runtimeContainer(children) {
+  const container = {
+    children,
+    get firstChild() {
+      return this.children[0] || null;
+    },
+    get lastChild() {
+      return this.children[this.children.length - 1] || null;
+    },
+    replaceChild(next, previous) {
+      const index = this.children.indexOf(previous);
+      assert.notEqual(index, -1, 'replay should replace an attached interaction row');
+      this.children[index] = next;
+      previous.parentNode = null;
+      next.parentNode = this;
+    },
+    insertBefore(node, reference) {
+      const currentIndex = this.children.indexOf(node);
+      if (currentIndex >= 0) this.children.splice(currentIndex, 1);
+      const referenceIndex = this.children.indexOf(reference);
+      this.children.splice(referenceIndex >= 0 ? referenceIndex : this.children.length, 0, node);
+      node.parentNode = this;
+    },
+  };
+  children.forEach((child) => {
+    child.parentNode = container;
+  });
+  return container;
+}
+
+function loadBoardroomMessageRuntime() {
+  const jquery = () => ({
+    text() { return this; },
+    css() { return this; },
+    prepend() { return this; },
+  });
+  const documentStub = {
+    createElement() {
+      return runtimeNode('');
+    },
+  };
+  const windowStub = {
+    BlogController: {
+      getSelectedSlug() {
+        return null;
+      },
+    },
+  };
+  const moduleStub = { exports: {} };
+  const requireStub = (name) => {
+    if (name === 'jquery') return jquery;
+    if (name === 'moment') return { tz() {} };
+    return {};
+  };
+  const source = `${boardroom}
+module.exports.__setMessageRuntime = function (type, container) {
+  streamType = type;
+  interactionContainer = [container];
+  globe = {};
+  swirls = null;
+  locationAreas = { unknown: { count: 0, ref: { css() {} } } };
+};`;
+  new Function('require', 'module', 'exports', 'document', 'window', 'setInterval', source)(
+    requireStub,
+    moduleStub,
+    moduleStub.exports,
+    documentStub,
+    windowStub,
+    () => 0,
+  );
+  return moduleStub.exports;
+}
+
+const replayRuntime = loadBoardroomMessageRuntime();
+const detachedRows = [
+  runtimeNode('interaction-data blog-interaction'),
+  runtimeNode('interaction-data blog-interaction'),
+];
+const discoveryNode = runtimeNode('blog-discovery');
+const replayContainer = runtimeContainer([...detachedRows, discoveryNode]);
+replayRuntime.__setMessageRuntime('blog', replayContainer);
+replayRuntime.message({
+  stream: 'blog',
+  slug: 'first-post',
+  title: 'First post',
+  category: 'Notes',
+  date: '2026-07-01',
+  readTime: 2,
+  tags: ['archive'],
+  featured: false,
+});
+replayRuntime.message({
+  stream: 'blog',
+  slug: 'second-post',
+  title: 'Second post',
+  category: 'Notes',
+  date: '2026-07-02',
+  readTime: 3,
+  tags: ['archive'],
+  featured: false,
+});
+const replayRows = replayContainer.children.filter((node) => node.classList.contains('blog-interaction'));
+assert.equal(replayRows.length, 2, 'archive replay should preserve one row per placeholder');
+assert.deepEqual(
+  replayRows.map((node) => node.getAttribute('data-post-slug')),
+  ['second-post', 'first-post'],
+  'archive replay should move each replacement button to the front without restoring detached rows',
+);
+assert.equal(
+  detachedRows.filter((node) => node.parentNode === null).length,
+  2,
+  'detached placeholders should stay detached',
+);
+
+const legacyRow = runtimeNode('interaction-data');
+const legacyContainer = runtimeContainer([legacyRow]);
+replayRuntime.__setMessageRuntime('github', legacyContainer);
+replayRuntime.message({
+  stream: 'github',
+  username: 'Legacy',
+  title: 'Legacy status',
+  type: 'push',
+  size: 1,
+  featured: true,
+  popularity: 1,
+});
+assert.match(
+  legacyRow.innerHTML,
+  /interaction-popularity[^>]*>archive</,
+  'non-blog replay should render archive status from low popularity even when featured is set',
+);
 const mobileBlogCss = blogCss.slice(blogCss.indexOf('@media (max-width: 900px)'));
 const mobileRules = [...mobileBlogCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
 
@@ -242,4 +467,19 @@ assert.match(blogCss, /max-width: 72ch/, 'article body should have readable line
 assert.doesNotMatch(blogCss, /blog-thread-card/, 'rejected thread-card styles should stay removed');
 assert.doesNotMatch(blogCss, /blog-mini-list/, 'old README mini launcher styles should stay removed');
 
+const mobileMediaRules = mobileDeclarations('body.blog-flex #media');
+const mobileMediaShelfRules = mobileDeclarations('body.blog-flex #media-container');
+assert.ok(
+  mobileMediaRules.some(
+    (rule) => /display\s*:\s*block\s*!important/.test(rule)
+      && /max-width\s*:\s*100%/.test(rule)
+      && /min-width\s*:\s*0/.test(rule)
+      && /overflow-x\s*:\s*auto\s*!important/.test(rule),
+  )
+    && mobileMediaRules.every((rule) => !/display\s*:\s*none\b/.test(rule))
+    && mobileMediaShelfRules.some(
+      (rule) => /display\s*:\s*flex\b/.test(rule) && /width\s*:\s*max-content\b/.test(rule),
+    ),
+  'mobile media shelf should remain displayable, bounded, and internally scrollable',
+);
 console.log('blog runtime tests passed');

@@ -70,16 +70,112 @@ function escapeHtml(value) {
     });
 }
 
+function createDiscoveryButton(label, className, handler, current) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = className || "blog-discovery-control";
+    button.textContent = String(label == null ? "" : label);
+    button.setAttribute("aria-label", String(label == null ? "" : label));
+    if (current) button.setAttribute("aria-current", "true");
+    button.addEventListener("click", handler);
+    return button;
+}
+
+function appendDiscoveryGroup(parent, label, items, handler, currentValue) {
+    if (!items.length) return;
+    var group = document.createElement("div");
+    group.className = "blog-discovery-group";
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-label", label);
+    var heading = document.createElement("span");
+    heading.className = "blog-discovery-label";
+    heading.textContent = label;
+    group.appendChild(heading);
+    items.forEach(function (item) {
+        var value = String(item);
+        group.appendChild(createDiscoveryButton(value, "blog-discovery-option", function () {
+            handler(value);
+        }, currentValue != null && String(currentValue) === value));
+    });
+    parent.appendChild(group);
+}
+
+function renderBlogDiscovery(parent, controller) {
+    var index = controller && controller.getIndex ? controller.getIndex() : (window.BLOG_INDEX || {});
+    var currentLens = controller && controller.getLens ? controller.getLens() : blogMode;
+    var discovery = document.createElement("section");
+    discovery.className = "blog-discovery";
+    discovery.setAttribute("aria-label", "Archive discovery controls");
+
+    var heading = document.createElement("h4");
+    heading.textContent = "DISCOVERY";
+    discovery.appendChild(heading);
+
+    var lenses = document.createElement("div");
+    lenses.className = "blog-discovery-lenses";
+    lenses.setAttribute("role", "group");
+    lenses.setAttribute("aria-label", "Archive lenses");
+    [
+        ["Featured", "featured"],
+        ["Latest", "latest"],
+        ["Topics", "topics"],
+        ["Archive", "archive"],
+        ["Search", "search"]
+    ].forEach(function (entry) {
+        lenses.appendChild(createDiscoveryButton(entry[0], "blog-discovery-lens", function () {
+            if (controller && controller.setLens) controller.setLens(entry[1]);
+        }, currentLens === entry[1]));
+    });
+    discovery.appendChild(lenses);
+
+    var tagNames = index && index.tags ? Object.keys(index.tags) : [];
+    appendDiscoveryGroup(discovery, "Topics / tags", tagNames, function (tag) {
+        if (controller && controller.setFilterTag) controller.setFilterTag(tag);
+    }, controller && controller.state ? controller.state.filterTag : null);
+
+    var yearNames = index && index.archiveByYear ? Object.keys(index.archiveByYear).sort().reverse() : [];
+    appendDiscoveryGroup(discovery, "Archive / years", yearNames, function (year) {
+        if (controller && controller.setFilterYear) controller.setFilterYear(year);
+    }, controller && controller.state ? controller.state.filterYear : null);
+
+    var searchForm = document.createElement("form");
+    searchForm.className = "blog-discovery-search";
+    searchForm.setAttribute("role", "search");
+    var searchLabel = document.createElement("label");
+    searchLabel.textContent = "Search archive";
+    var searchInput = document.createElement("input");
+    searchInput.type = "search";
+    searchInput.name = "archive-search";
+    searchInput.placeholder = "Search posts";
+    searchInput.setAttribute("aria-label", "Search archive");
+    if (controller && controller.state && controller.state.lens === "search") {
+        searchInput.value = controller.state.searchQuery || "";
+    }
+    var searchButton = document.createElement("button");
+    searchButton.type = "submit";
+    searchButton.textContent = "Search";
+    searchLabel.appendChild(searchInput);
+    searchForm.appendChild(searchLabel);
+    searchForm.appendChild(searchButton);
+    searchForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        if (controller && controller.setSearch) controller.setSearch(searchInput.value.trim());
+    });
+    discovery.appendChild(searchForm);
+    parent.appendChild(discovery);
+}
+
 function renderBlogInteractions() {
-    if(streamType !== "blog" || !interactionContainer || !Boardroom.posts.length){
+    if(streamType !== "blog" || !interactionContainer){
         return;
     }
 
     // Delegate to the unified controller when available (it owns lens
-    // state). Fall back to local filtering for non-blog or pre-controller contexts.
+    // state). Fall back to local filtering for non-controller contexts.
+    var controller = window.BlogController;
     var posts;
-    if (streamType === "blog" && window.BlogController && window.BlogController.getVisiblePosts) {
-        posts = window.BlogController.getVisiblePosts();
+    if (controller && controller.getVisiblePosts) {
+        posts = controller.getVisiblePosts();
     } else {
         posts = Boardroom.posts.slice();
         if(blogMode === "featured"){
@@ -95,7 +191,7 @@ function renderBlogInteractions() {
     }
 
     interactionContainer.empty();
-    var selectedSlug = window.BlogController ? BlogController.getSelectedSlug() : null;
+    var selectedSlug = controller && controller.getSelectedSlug ? controller.getSelectedSlug() : null;
     posts.forEach(function(post){
         var label = [post.title, post.category, post.date, post.readTime, (post.tags || []).join(", ")].filter(Boolean).join(" — ");
         var isSelected = post.slug === selectedSlug;
@@ -106,26 +202,27 @@ function renderBlogInteractions() {
             '<span class="interaction-size">' + escapeHtml(post.readTime || "?") + 'm</span>' +
             '<span class="interaction-popularity">' + (post.featured ? "featured" : "archive") + '</span>' +
         '</button>');
-        
+
         // Handle keyboard activation (Enter/Space)
         row.on('keydown', function(event) {
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
-                if (window.BlogController) {
-                    window.BlogController.openPost(post.slug);
+                if (controller && controller.openPost) {
+                    controller.openPost(post.slug);
                 }
             }
         });
-        
+
         // Handle click activation
         row.on('click', function() {
-            if (window.BlogController) {
-                window.BlogController.openPost(post.slug);
+            if (controller && controller.openPost) {
+                controller.openPost(post.slug);
             }
         });
-        
+
         interactionContainer.append(row);
     });
+    renderBlogDiscovery(interactionContainer[0], controller);
 }
 
 Boardroom.renderBlogInteractions = renderBlogInteractions;
@@ -408,9 +505,22 @@ Boardroom.message = function(message){
     }
     
     if(interactionContainer && interactionContainer[0].lastChild){
-        var lastChild = interactionContainer[0].lastChild;
+        var interactionNode = interactionContainer[0];
+        var lastChild = interactionNode.lastChild;
+        if (streamType === "blog") {
+            for (var childIndex = interactionNode.children.length - 1; childIndex >= 0; childIndex--) {
+                var candidate = interactionNode.children[childIndex];
+                if (candidate.classList && candidate.classList.contains("blog-interaction")) {
+                    lastChild = candidate;
+                    break;
+                }
+            }
+        }
+        if (!lastChild || (streamType === "blog" && !lastChild.classList.contains("blog-interaction"))) {
+            return;
+        }
         var slugAttr = message.slug ? ' data-post-slug="' + escapeHtml(message.slug) + '"' : '';
-        var ariaCurrentAttr = (message.slug && window.BlogController && BlogController.getSelectedSlug() === message.slug) ? ' aria-current="true"' : '';
+        var ariaCurrentAttr = (message.slug && window.BlogController && window.BlogController.getSelectedSlug() === message.slug) ? ' aria-current="true"' : '';
         var label = [message.title, message.category, message.date, message.readTime, (message.tags || []).join(", ")].filter(Boolean).join(" — ");
         
         // For blog streams, replace placeholder <ul> with semantic <button>
@@ -423,11 +533,11 @@ Boardroom.message = function(message){
               '<span class="interaction-title">' + escapeHtml(message.title) + '</span>' +
               '<span class="interaction-type">' + escapeHtml((message.tags || []).join(", ")) + '</span>' +
               '<span class="interaction-size">' + escapeHtml(message.readTime || "?") + 'm</span>' +
-              '<span class="interaction-popularity">' + (message.popularity > 100 ? "featured" : "archive") + '</span>';
+              '<span class="interaction-popularity">' + (message.featured ? "featured" : "archive") + '</span>';
             
             if (slugAttr) button.setAttribute('data-post-slug', message.slug);
             if (ariaCurrentAttr) button.setAttribute('aria-current', 'true');
-            button.setAttribute('aria-label', escapeHtml(label));
+            button.setAttribute('aria-label', label);
             button.setAttribute('tabindex', '0');
             
             if(message.popularity > 100){
@@ -435,6 +545,7 @@ Boardroom.message = function(message){
             }
             
             interactionContainer[0].replaceChild(button, lastChild);
+            lastChild = button;
         } else {
             // Non-blog streams: preserve original placeholder/list behavior
             lastChild.innerHTML = 
@@ -447,7 +558,7 @@ Boardroom.message = function(message){
             if (slugAttr) lastChild.setAttribute('data-post-slug', message.slug);
             if (ariaCurrentAttr) lastChild.setAttribute('aria-current', 'true');
             else lastChild.removeAttribute('aria-current');
-            lastChild.setAttribute('aria-label', escapeHtml(label));
+            lastChild.setAttribute('aria-label', label);
             lastChild.setAttribute('tabindex', '0');
             lastChild.setAttribute('role', 'button');
 
@@ -456,7 +567,19 @@ Boardroom.message = function(message){
             }
         }
         
-        interactionContainer[0].insertBefore(interactionContainer[0].lastChild, interactionContainer[0].firstChild);
+        var firstChild = interactionNode.firstChild;
+        if (streamType === "blog") {
+            for (var firstIndex = 0; firstIndex < interactionNode.children.length; firstIndex++) {
+                var firstCandidate = interactionNode.children[firstIndex];
+                if (firstCandidate.classList && firstCandidate.classList.contains("blog-interaction")) {
+                    firstChild = firstCandidate;
+                    break;
+                }
+            }
+        }
+        if (firstChild && lastChild !== firstChild) {
+            interactionNode.insertBefore(lastChild, firstChild);
+        }
     }
 
     createZipdot(message);

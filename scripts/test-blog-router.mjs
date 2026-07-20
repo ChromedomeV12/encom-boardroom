@@ -54,10 +54,20 @@ var requireShim = function (name) {
   throw new Error('Unknown require: ' + name);
 };
 
+var intervalCallbacks = [];
+function mockSetInterval(callback) {
+  var token = { callback: callback, cleared: false };
+  intervalCallbacks.push(token);
+  return token;
+}
+function mockClearInterval(token) {
+  if (token) token.cleared = true;
+}
+
 // Eval the controller in a function scope with our mocks.
-var wrapped = '(function(module, exports, require, window, document) {' +
+var wrapped = '(function(module, exports, require, window, document, setInterval, clearInterval) {' +
   controllerSrc +
-  '\n})(moduleShim, moduleShim.exports, requireShim, global.window, global.document);';
+  '\n})(moduleShim, moduleShim.exports, requireShim, global.window, global.document, mockSetInterval, mockClearInterval);';
 eval(wrapped);
 var BlogController = moduleShim.exports;
 
@@ -297,4 +307,128 @@ assert.equal(restoredInert, false, 'string coercion should preserve false correc
 var savedInert = mockElement.inert;
 assert.equal(savedInert, false, 'closure state preserves exact boolean');
 
-console.log('blog router tests passed (19 tests)');
+// --- Test 20: archive replay respects the active lens ----------------
+resetUrl('');
+BlogController.init(samplePosts, sampleIndex);
+BlogController.setLens('featured', false);
+var replayedSlugs = [];
+BlogController.on('archive-signal', function (signal) { replayedSlugs.push(signal.slug); });
+BlogController.startArchiveReplay();
+var activeReplay = intervalCallbacks[intervalCallbacks.length - 1];
+activeReplay.callback();
+activeReplay.callback();
+assert.deepEqual(replayedSlugs, ['alpha'], 'featured replay should not inject non-featured posts');
+
+// --- Test 21: topic and year filters change visible posts ------------
+BlogController.setFilterTag('y');
+assert.deepEqual(BlogController.getVisiblePosts().map(function (post) { return post.slug; }), ['beta'],
+  'tag filter should return matching posts');
+BlogController.setFilterYear('2025');
+assert.deepEqual(BlogController.getVisiblePosts(), [], 'year filter should exclude posts from other years');
+
+// --- Test 22: filter params survive URL routing -----------------------
+resetUrl('?lens=topics&tag=y');
+eventListeners.popstate.forEach(function (fn) { fn(); });
+assert.deepEqual(BlogController.getVisiblePosts().map(function (post) { return post.slug; }), ['beta'],
+  'routed topic lens should apply its tag parameter');
+// --- Test 23: initial deep-link renders before boardroom readiness ------
+resetUrl('?post=beta');
+BlogController.init(samplePosts, sampleIndex);
+var deepLinkPostOpen = 0;
+var deepLinkReaderOpen = 0;
+BlogController.on('post-open', function () { deepLinkPostOpen++; });
+BlogController.on('reader-open', function () { deepLinkReaderOpen++; });
+assert.equal(BlogController.isReady(), false, 'initial deep link must not mark boardroom ready');
+assert.equal(BlogController.state.readerPending, true, 'initial deep link should remain pending before adapter boot');
+var replayCountBeforePendingRender = intervalCallbacks.length;
+BlogController.renderPendingPost();
+assert.equal(BlogController.isReady(), false, 'pending reader render must not mark boardroom ready');
+assert.equal(intervalCallbacks.length, replayCountBeforePendingRender,
+  'pending reader render must not start archive replay');
+assert.equal(deepLinkPostOpen, 1, 'initial deep link should emit post-open when rendered');
+assert.equal(deepLinkReaderOpen, 1, 'initial deep link should emit reader-open when rendered');
+assert.equal(BlogController.state.readerPending, false, 'rendered deep link should no longer be pending');
+
+// --- Test 24: pre-ready post-to-post popstate rerenders new content -----
+resetUrl('?post=alpha');
+BlogController.init(samplePosts, sampleIndex);
+var preReadyPostOpens = [];
+BlogController.on('post-open', function (data) { preReadyPostOpens.push(data.slug); });
+assert.equal(BlogController.isReady(), false, 'pre-ready popstate fixture starts before boardroom readiness');
+resetUrl('?post=beta');
+eventListeners.popstate.forEach(function (fn) { fn(); });
+assert.deepEqual(preReadyPostOpens, ['beta'], 'pre-ready post-to-post popstate should emit the new post');
+assert.equal(BlogController.getSelectedSlug(), 'beta', 'pre-ready popstate should select the new post');
+assert.equal(BlogController.state.readerPending, false, 'pre-ready post-to-post popstate should render immediately');
+
+// --- Test 25: popstate teardown restores focus/scroll without history ---
+resetUrl('');
+BlogController.init(samplePosts, sampleIndex);
+BlogController.onBoardroomReady();
+var teardownFocus = { focus: function () { this.focused = true; } };
+global.document.activeElement = teardownFocus;
+global.window.scrollY = 777;
+BlogController.openPost('alpha');
+global.window.scrollY = 0;
+var teardownPushCount = mockHistory.pushed.length;
+var teardownReplaceCount = mockHistory.replaced.length;
+global.window.location.search = "";
+eventListeners.popstate.forEach(function (fn) { fn(); });
+assert.equal(BlogController.state.readerOpen, false, 'empty-url popstate should close the reader');
+assert.equal(BlogController.getSelectedSlug(), null, 'empty-url popstate should clear selection');
+assert.equal(teardownFocus.focused, true, 'empty-url popstate should restore origin focus');
+assert.equal(global.window.scrollY, 777, 'empty-url popstate should restore origin scroll');
+assert.equal(mockHistory.pushed.length, teardownPushCount, 'popstate teardown must not push history');
+assert.equal(mockHistory.replaced.length, teardownReplaceCount, 'popstate teardown must not replace history');
+
+// --- Test 26: search popstate also tears down without history -----------
+resetUrl('');
+BlogController.init(samplePosts, sampleIndex);
+BlogController.onBoardroomReady();
+var searchTeardownFocus = { focus: function () { this.focused = true; } };
+global.document.activeElement = searchTeardownFocus;
+global.window.scrollY = 888;
+BlogController.openPost('alpha');
+global.window.scrollY = 0;
+var searchTeardownPushCount = mockHistory.pushed.length;
+var searchTeardownReplaceCount = mockHistory.replaced.length;
+global.window.location.search = '?search=beta';
+eventListeners.popstate.forEach(function (fn) { fn(); });
+assert.equal(BlogController.state.readerOpen, false, 'search popstate should close the reader');
+assert.equal(BlogController.getLens(), 'search', 'search popstate should select search lens');
+assert.equal(searchTeardownFocus.focused, true, 'search popstate should restore origin focus');
+assert.equal(global.window.scrollY, 888, 'search popstate should restore origin scroll');
+assert.equal(mockHistory.pushed.length, searchTeardownPushCount, 'search popstate teardown must not push history');
+assert.equal(mockHistory.replaced.length, searchTeardownReplaceCount, 'search popstate teardown must not replace history');
+assert.deepEqual(BlogController.getVisiblePosts().map(function (post) { return post.slug; }), ['beta'],
+  'search popstate should apply its query');
+
+// --- Test 27: invalid URL lens falls back to a named discovery lens ----
+resetUrl('?lens=not-a-lens');
+eventListeners.popstate.forEach(function (fn) { fn(); });
+assert.equal(BlogController.getLens(), 'featured', 'invalid URL lens should use featured fallback');
+
+// --- Test 28: archive year uses stored publication year in any TZ ------
+var janOnePost = {
+  slug: 'jan-one',
+  title: 'New Year',
+  date: '2026-01-01',
+  featured: false,
+  category: 'Notes',
+  tags: [],
+  excerpt: '',
+  readTime: 1,
+  wordCount: 10
+};
+resetUrl('');
+BlogController.init([janOnePost], { archiveByYear: { '2026': ['jan-one'] } });
+BlogController.setFilterYear('2026', false);
+assert.deepEqual(
+  BlogController.getVisiblePosts().map(function (post) { return post.slug; }),
+  ['jan-one'],
+  'archive year filtering should use the publication date year, not local timezone',
+);
+
+console.log('blog router tests passed (28 tests)');
+
+
