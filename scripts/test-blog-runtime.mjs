@@ -117,6 +117,13 @@ assert.ok(
   'mobile globe should remain visible within a constrained instrument viewport',
 );
 
+assert.ok(
+  mobileDeclarations('body.blog-flex #lt-keyboard').some(
+    (rule) => /display\s*:\s*block\b/.test(rule) && /transform\s*:\s*scale\(/.test(rule),
+  ),
+  'touch keyboard should remain visible in a compact mobile layout',
+);
+
 assert.match(blogCss, /body\.blog-flex #boardroom/, 'blog CSS should own responsive boardroom layout');
 assert.match(blogCss, /display: grid;/, 'blog CSS should use grid/flex-style layout instead of only fixed boxes');
 assert.match(blogCss, /max-width: 72ch/, 'article body should have readable line length');

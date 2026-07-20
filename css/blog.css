@@ -122,6 +122,12 @@ body.blog-flex .blog-interaction:focus-within .interaction-title {
     display: none !important;
   }
 
+  body.blog-flex #lt-keyboard {
+    display: block;
+    transform: scale(0.6);
+    transform-origin: top left;
+  }
+
   body.blog-flex #globalization {
     display: block !important;
     max-height: 260px;
