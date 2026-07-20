@@ -74,6 +74,7 @@ assert.match(bundle, /BlogController/, 'served bundle should include the unified
 assert.match(bundle, /onBoardroomReady/, 'served bundle should wire the boardroom-ready lifecycle');
 
 assert.match(index, /id="boardroom-readme-blog"/, 'blog boardroom readme should exist');
+assert.match(index, /<meta\s+name=["']viewport["']\s+content=["'][^"']*\bwidth=device-width\b[^"']*\binitial-scale=1\b[^"']*["']\s*\/?>/, 'index should declare a responsive viewport');
 assert.match(index, /ENCOM ARCHIVE INFO/, 'index should have an archive info readme');
 assert.doesNotMatch(index, /Next build step: replace the placeholder/, 'index should not have stale placeholder copy');
 assert.match(index, /css\/blog\.css\?v=blog-fork-11/, 'responsive blog stylesheet should be loaded after ENCOM styles');
@@ -92,11 +93,34 @@ assert.match(adapter, /Escape/, 'reader should close on Escape key');
 assert.match(adapter, /LINKED FROM/, 'reader should render backlinks');
 assert.match(adapter, /LINKS OUT/, 'reader should render outgoing links');
 
+const mobileBlogCss = blogCss.slice(blogCss.indexOf('@media (max-width: 900px)'));
+const mobileRules = [...mobileBlogCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+
+function mobileDeclarations(selector) {
+  return mobileRules
+    .filter(([, selectors]) => selectors.split(',').some((candidate) => candidate.trim() === selector))
+    .map(([, , declarations]) => declarations);
+}
+
+for (const selector of ['body.blog-flex #globe', 'body.blog-flex #globe-footer', 'body.blog-flex #cube', 'body.blog-flex #swirls']) {
+  const declarations = mobileDeclarations(selector);
+  assert.notEqual(declarations.length, 0, `${selector} should have a compact mobile layout`);
+  assert.ok(declarations.every((rule) => !/display\s*:\s*none\b/.test(rule)), `${selector} should remain rendered on mobile`);
+}
+
+assert.ok(
+  mobileDeclarations('body.blog-flex #user-interaction-container').some((rule) => /overflow-x\s*:\s*auto\b/.test(rule)),
+  'mobile cube and swirls should share a horizontally scrollable instrument shelf',
+);
+assert.ok(
+  mobileDeclarations('body.blog-flex #globe').some((rule) => /overflow\s*:\s*hidden\b/.test(rule) && /max-height\s*:/.test(rule)),
+  'mobile globe should remain visible within a constrained instrument viewport',
+);
+
 assert.match(blogCss, /body\.blog-flex #boardroom/, 'blog CSS should own responsive boardroom layout');
 assert.match(blogCss, /display: grid;/, 'blog CSS should use grid/flex-style layout instead of only fixed boxes');
 assert.match(blogCss, /max-width: 72ch/, 'article body should have readable line length');
 assert.doesNotMatch(blogCss, /blog-thread-card/, 'rejected thread-card styles should stay removed');
-assert.doesNotMatch(blogCss, /#cube,\r?\nbody\.blog-flex #swirls/, 'blog CSS should not hide original cube/swirls visualization');
 assert.doesNotMatch(blogCss, /blog-mini-list/, 'old README mini launcher styles should stay removed');
 
 console.log('blog runtime tests passed');

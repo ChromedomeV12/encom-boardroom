@@ -117,14 +117,60 @@ body.blog-flex .blog-interaction:focus-within .interaction-title {
     width: 100% !important;
   }
 
-  body.blog-flex #globalization,
   body.blog-flex #media,
-  body.blog-flex #globe,
-  body.blog-flex #globe-footer,
-  body.blog-flex #cube,
-  body.blog-flex #swirls,
   body.blog-flex #bottom-border {
     display: none !important;
+  }
+
+  body.blog-flex #globalization {
+    display: block !important;
+    max-height: 260px;
+    order: 4;
+    overflow: auto !important;
+  }
+
+  body.blog-flex #globe {
+    display: block !important;
+    height: clamp(240px, 65vw, 420px) !important;
+    left: auto !important;
+    margin: 0 auto;
+    max-height: 420px;
+    order: 5;
+    overflow: hidden;
+    position: relative !important;
+    top: auto !important;
+    width: min(100%, 600px) !important;
+  }
+
+  body.blog-flex #globe canvas {
+    display: block;
+    height: 100% !important;
+    margin: 0 auto;
+    max-width: 100%;
+    width: auto !important;
+  }
+
+  body.blog-flex #globe-footer {
+    align-items: center;
+    display: flex !important;
+    height: 55px !important;
+    left: auto !important;
+    margin: 0 auto;
+    max-width: 600px;
+    order: 6;
+    overflow-x: auto;
+    position: relative !important;
+    top: auto !important;
+    width: 100%;
+  }
+
+  body.blog-flex #globe-footer a {
+    flex: 0 0 auto;
+  }
+
+  body.blog-flex #globe-footer .footer-bar {
+    height: 40px;
+    margin-top: 7px;
   }
 
   body.blog-flex #user-interaction {
@@ -146,6 +192,41 @@ body.blog-flex .blog-interaction:focus-within .interaction-title {
   body.blog-flex #growth-container {
     height: auto !important;
     width: 100% !important;
+  }
+
+  body.blog-flex #user-interaction {
+    overflow-x: hidden !important;
+  }
+
+  body.blog-flex #user-interaction-container {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(286px, 1fr) 290px;
+    min-width: 0;
+    overflow-x: auto;
+  }
+
+  body.blog-flex #cube,
+  body.blog-flex #swirls {
+    align-self: start;
+    box-sizing: border-box;
+    display: block !important;
+    grid-column: 2;
+    grid-row: 1;
+    height: 225px !important;
+    left: auto !important;
+    position: relative !important;
+    top: auto !important;
+    width: 290px !important;
+  }
+
+  body.blog-flex #swirls {
+    bottom: auto !important;
+  }
+
+  body.blog-flex #cube canvas,
+  body.blog-flex #swirls canvas {
+    max-width: 100%;
   }
 
   body.blog-flex #interaction {
