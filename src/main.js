@@ -1,10 +1,18 @@
 var $ = require("jquery"),
     EventSource = require("event-source"),
     Boardroom = require("./Boardroom.js"),
+    BlogController = require("./BlogController.js"),
     PleaseRotate = require("pleaserotate.js"),
     init = false;
 
 require("jquery-ui");
+// Expose the blog controller on the window so the non-bundled adapter
+// (js/blog-adapter.js, loaded as a separate <script>) can consume it
+// without a require() call. Init it with the generated post data.
+window.BlogController = BlogController;
+if (window.BLOG_POSTS) {
+    BlogController.init(window.BLOG_POSTS, window.BLOG_INDEX || {});
+}
 
 $.fn.center = function (scale) {
 
@@ -68,7 +76,11 @@ var onSwitch = function(view){
 
         setTimeout(function(){
             active = "br";
-            Boardroom.show();
+            Boardroom.show(function(){
+                // Explicit lifecycle event: the boardroom is ready.
+                // Replaces the adapter's retry-timer boot cascade.
+                BlogController.onBoardroomReady();
+            });
         }, 3000)
 
     } else if(view === "github"){

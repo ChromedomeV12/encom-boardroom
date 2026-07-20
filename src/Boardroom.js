@@ -75,16 +75,23 @@ function renderBlogInteractions() {
         return;
     }
 
-    var posts = Boardroom.posts.slice();
-    if(blogMode === "featured"){
-        posts = posts.filter(function(post){ return post.featured; });
-        if(!posts.length){
-            posts = Boardroom.posts.slice(0, 1);
+    // Delegate to the unified controller when available (it owns lens
+    // state). Fall back to local filtering for non-blog or pre-controller contexts.
+    var posts;
+    if (streamType === "blog" && window.BlogController && window.BlogController.getVisiblePosts) {
+        posts = window.BlogController.getVisiblePosts();
+    } else {
+        posts = Boardroom.posts.slice();
+        if(blogMode === "featured"){
+            posts = posts.filter(function(post){ return post.featured; });
+            if(!posts.length){
+                posts = Boardroom.posts.slice(0, 1);
+            }
+        } else if(blogMode === "archive"){
+            posts.sort(function(left, right){
+                return new Date(left.date) - new Date(right.date);
+            });
         }
-    } else if(blogMode === "archive"){
-        posts.sort(function(left, right){
-            return new Date(left.date) - new Date(right.date);
-        });
     }
 
     interactionContainer.empty();

@@ -12,6 +12,7 @@ async function read(relativePath) {
 const lightTable = await read('src/LightTable.js');
 const main = await read('src/main.js');
 const boardroom = await read('src/Boardroom.js');
+const controller = await read('src/BlogController.js');
 const bundle = await read('build/encom-boardroom.js');
 const index = await read('index.html');
 const adapter = await read('js/blog-adapter.js');
@@ -28,6 +29,9 @@ assert.match(lightTable, /currentDir == "blog"/, 'terminal should track blog dir
 assert.match(main, /view === "blog"/, 'main switch should support blog stream');
 assert.match(main, /screensaver\.text\("BLOG"\)/, 'blog stream should use BLOG screensaver');
 assert.match(main, /Boardroom\.init\("blog", window\.BLOG_POSTS[^;]+BLOG_LAUNCH_MODE/, 'blog stream should initialize boardroom with posts and launch mode');
+assert.match(main, /BlogController/, 'main should import the unified blog controller');
+assert.match(main, /BlogController\.init/, 'main should initialize the controller with post data');
+assert.match(main, /BlogController\.onBoardroomReady/, 'main should call onBoardroomReady in the show callback');
 
 assert.match(boardroom, /streamType === "blog"/, 'boardroom should have first-class blog behavior');
 assert.match(boardroom, /renderBlogInteractions/, 'boardroom should render blog post rows');
@@ -35,6 +39,12 @@ assert.match(boardroom, /data-post-slug/, 'boardroom rows should carry post slug
 assert.doesNotMatch(boardroom, /blog-thread-card/, 'boardroom should not use rejected thread-card stream UI');
 assert.match(boardroom, /blogMode === "featured"/, 'boardroom should support featured post mode');
 assert.match(boardroom, /blogMode === "archive"/, 'boardroom should support archive post mode');
+assert.match(controller, /pushState/, 'controller should use history pushState for routing');
+assert.match(controller, /popstate/, 'controller should handle popstate for back/forward');
+assert.match(controller, /onBoardroomReady/, 'controller should expose a boardroom-ready lifecycle event');
+assert.match(controller, /openPost/, 'controller should expose openPost');
+assert.match(controller, /closePost/, 'controller should expose closePost');
+assert.match(controller, /getVisiblePosts/, 'controller should expose getVisiblePosts for the current lens');
 
 assert.match(bundle, /simulateCommand\("\|cd blog\$"\)/, 'served bundle should type cd blog');
 assert.match(bundle, /command == "run blog\.exe"/, 'served bundle should execute blog.exe');
@@ -42,6 +52,8 @@ assert.match(bundle, /view === "blog"/, 'served bundle should support blog strea
 assert.match(bundle, /Boardroom\.init\("blog", window\.BLOG_POSTS[^;]+BLOG_LAUNCH_MODE/, 'served bundle should initialize boardroom with posts and launch mode');
 assert.match(bundle, /renderBlogInteractions/, 'served bundle should render blog post rows');
 assert.doesNotMatch(bundle, /blog-thread-card/, 'served bundle should not use rejected thread-card stream UI');
+assert.match(bundle, /BlogController/, 'served bundle should include the unified blog controller');
+assert.match(bundle, /onBoardroomReady/, 'served bundle should wire the boardroom-ready lifecycle');
 
 assert.match(index, /id="boardroom-readme-blog"/, 'blog boardroom readme should exist');
 assert.match(index, /css\/blog\.css\?v=blog-fork-11/, 'responsive blog stylesheet should be loaded after ENCOM styles');
@@ -50,8 +62,8 @@ assert.doesNotMatch(adapter, /blog-mini-list/, 'README mini post launcher should
 assert.doesNotMatch(adapter, /boardroom-readme-test/, 'adapter should not overwrite the test readme as blog copy');
 assert.match(adapter, /classList\.add\('blog-flex'\)/, 'adapter should enable blog responsive layout class');
 assert.doesNotMatch(adapter, /renderPostCard/, 'adapter fallback should not use rejected thread-card stream UI');
-assert.match(adapter, /#\/post\//, 'reader should update hash post URLs');
-assert.match(adapter, /hashchange/, 'reader should respond to hash changes');
+assert.match(adapter, /\\?post=/, 'reader should use query-param post URLs');
+assert.match(adapter, /Escape/, 'reader should close on Escape key');
 assert.match(adapter, /LINKED FROM/, 'reader should render backlinks');
 assert.match(adapter, /LINKS OUT/, 'reader should render outgoing links');
 
