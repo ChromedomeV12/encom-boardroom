@@ -405,35 +405,56 @@ Boardroom.message = function(message){
     if(message.type && swirls){
         swirls.hit(message.type);
     }
-
-    changeBlinkies();
- 
+    
     if(interactionContainer && interactionContainer[0].lastChild){
         var lastChild = interactionContainer[0].lastChild;
         var slugAttr = message.slug ? ' data-post-slug="' + escapeHtml(message.slug) + '"' : '';
         var ariaCurrentAttr = (message.slug && window.BlogController && BlogController.getSelectedSlug() === message.slug) ? ' aria-current="true"' : '';
         var label = [message.title, message.category, message.date, message.readTime, (message.tags || []).join(", ")].filter(Boolean).join(" — ");
         
-        // Preserve semantic button markup with proper attributes
-        lastChild.innerHTML = 
-            '<span class="interaction-username">' + escapeHtml(message.username || message.category || "post") + '</span>' +
-            '<span class="interaction-title">' + escapeHtml(message.title) + '</span>' +
-            '<span class="interaction-type">' + escapeHtml((message.tags || []).join(", ")) + '</span>' +
-            '<span class="interaction-size">' + escapeHtml(message.readTime || "?") + 'm</span>' +
-            '<span class="interaction-popularity">' + (message.popularity > 100 ? "featured" : "archive") + '</span>';
-        
-        // Ensure the button has proper attributes
-        if (slugAttr) lastChild.setAttribute('data-post-slug', message.slug);
-        if (ariaCurrentAttr) lastChild.setAttribute('aria-current', 'true');
-        else lastChild.removeAttribute('aria-current');
-        lastChild.setAttribute('aria-label', escapeHtml(label));
-        lastChild.setAttribute('tabindex', '0');
-        lastChild.setAttribute('role', 'button');
+        // For blog streams, replace placeholder <ul> with semantic <button>
+        if (streamType === "blog") {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'interaction-data blog-interaction';
+            button.innerHTML = 
+              '<span class="interaction-username">' + escapeHtml(message.username || message.category || "post") + '</span>' +
+              '<span class="interaction-title">' + escapeHtml(message.title) + '</span>' +
+              '<span class="interaction-type">' + escapeHtml((message.tags || []).join(", ")) + '</span>' +
+              '<span class="interaction-size">' + escapeHtml(message.readTime || "?") + 'm</span>' +
+              '<span class="interaction-popularity">' + (message.popularity > 100 ? "featured" : "archive") + '</span>';
+            
+            if (slugAttr) button.setAttribute('data-post-slug', message.slug);
+            if (ariaCurrentAttr) button.setAttribute('aria-current', 'true');
+            button.setAttribute('aria-label', escapeHtml(label));
+            button.setAttribute('tabindex', '0');
+            
+            if(message.popularity > 100){
+              button.innerHTML = '<span class="interaction-popular">!</span>' + button.innerHTML;
+            }
+            
+            interactionContainer[0].replaceChild(button, lastChild);
+        } else {
+            // Non-blog streams: preserve original placeholder/list behavior
+            lastChild.innerHTML = 
+              '<span class="interaction-username">' + escapeHtml(message.username || message.category || "post") + '</span>' +
+              '<span class="interaction-title">' + escapeHtml(message.title) + '</span>' +
+              '<span class="interaction-type">' + escapeHtml((message.tags || []).join(", ")) + '</span>' +
+              '<span class="interaction-size">' + escapeHtml(message.readTime || "?") + 'm</span>' +
+              '<span class="interaction-popularity">' + (message.popularity > 100 ? "featured" : "archive") + '</span>';
+            
+            if (slugAttr) lastChild.setAttribute('data-post-slug', message.slug);
+            if (ariaCurrentAttr) lastChild.setAttribute('aria-current', 'true');
+            else lastChild.removeAttribute('aria-current');
+            lastChild.setAttribute('aria-label', escapeHtml(label));
+            lastChild.setAttribute('tabindex', '0');
+            lastChild.setAttribute('role', 'button');
 
-        if(message.popularity > 100){
-            lastChild.innerHTML = '<span class="interaction-popular">!</span>' + lastChild.innerHTML;
+            if(message.popularity > 100){
+              lastChild.innerHTML = '<span class="interaction-popular">!</span>' + lastChild.innerHTML;
+            }
         }
-
+        
         interactionContainer[0].insertBefore(interactionContainer[0].lastChild, interactionContainer[0].firstChild);
     }
 

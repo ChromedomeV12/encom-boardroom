@@ -321,9 +321,6 @@ BlogController.setFilterYear = function (year) {
 // ---- popstate: back/forward browser navigation ---------------------------
 BlogController.handlePopState = function () {
   BlogController.routeFromUrl();
-  if (!state.selectedSlug && state.readerOpen === false) {
-    emit("lens-change", { lens: state.lens });
-  }
 };
 
 // Install the popstate listener once.

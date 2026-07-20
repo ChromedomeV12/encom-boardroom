@@ -149,6 +149,7 @@ BlogController.on('lens-change', function () { lensChanges++; });
 resetUrl('?lens=featured');
 eventListeners.popstate.forEach(function (fn) { fn(); });
 assert.equal(BlogController.getLens(), 'featured', 'popstate should re-route to the new URL');
+assert.equal(lensChanges, 1, 'popstate should emit lens-change once');
 
 
 // --- Test 9: state.readerOpen is authoritative ------------------------

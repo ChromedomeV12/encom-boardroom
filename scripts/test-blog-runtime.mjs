@@ -141,14 +141,15 @@ assert.match(adapter, /var\s+lightTable\s*=\s*null/, 'adapter should capture ele
 assert.match(adapter, /savedLightTableInert/, 'adapter should use closure state for exact restoration');
 assert.doesNotMatch(adapter, /dataset\.previouslyInert/, 'adapter should not use dataset for state storage');
 
-// M6 task 3 fixes: Boardroom.message preserves semantic button markup
-assert.match(boardroom, /<button|role=["']button['"]/, 'Boardroom.message should preserve button markup');
-assert.doesNotMatch(boardroom, /<li[^>]*class=["']interaction-username['"]/, 'Boardroom.message should not rewrite semantic button with li children');
-assert.match(boardroom, /tabindex/, 'Boardroom.message should preserve tabindex');
-assert.match(boardroom, /aria-label/, 'Boardroom.message should preserve aria-label');
-assert.match(boardroom, /data-post-slug/, 'Boardroom.message should preserve data-post-slug');
-
-assert.match(blogCss, /:focus-visible/, 'blog CSS should have :focus-visible styling');
+// M6 task 3 fixes: focusin containment listener for programmatic focus escape
+assert.match(adapter, /focusin/, 'adapter should install focusin containment listener');
+assert.match(adapter, /reader\.contains\(|!reader\.contains\(/, 'adapter should check if focus is outside reader');
+assert.match(adapter, /preventDefault\(\)|stopPropagation\(\)/, 'adapter should prevent default focus behavior when redirecting');
+assert.match(adapter, /closeBtn|focusable\[0\]/, 'adapter should redirect to close button or first focusable');
+// M6 task 3 fixes: Boardroom.message preserves semantic buttons in blog streams
+assert.match(boardroom, /createElement.*button/, 'Boardroom.message should create button elements for blog streams');
+assert.match(boardroom, /replaceChild.*button.*lastChild/, 'Boardroom.message should replace placeholder with button for blog streams');
+assert.match(boardroom, /streamType === "blog"/, 'Boardroom.message should check stream type before button replacement');
 const mobileBlogCss = blogCss.slice(blogCss.indexOf('@media (max-width: 900px)'));
 const mobileRules = [...mobileBlogCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
 

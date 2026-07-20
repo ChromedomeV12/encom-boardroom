@@ -149,6 +149,23 @@
         first.focus();
       }
     });
+
+    // Focusin containment: redirect programmatic focus outside reader back to dialog
+    reader.addEventListener('focusin', function (event) {
+      if (!reader.classList.contains('is-open')) return;
+      var target = event.target;
+      // If focus lands outside the reader, redirect to close button or first focusable
+      if (!reader.contains(target)) {
+        event.preventDefault();
+        event.stopPropagation();
+        var closeBtn = reader.querySelector('.blog-reader-close');
+        var focusable = reader.querySelectorAll('a[href],button,[tabindex]:not([tabindex="-1"])');
+        var fallback = closeBtn || (focusable.length ? focusable[0] : reader);
+        if (typeof fallback.focus === 'function') {
+          fallback.focus();
+        }
+      }
+    });
   }
 
   function openReaderLocal(slug) {
