@@ -108,6 +108,42 @@ for (const selector of ['body.blog-flex #globe', 'body.blog-flex #globe-footer',
   assert.ok(declarations.every((rule) => !/display\s*:\s*none\b/.test(rule)), `${selector} should remain rendered on mobile`);
 }
 
+for (const selector of [
+  'body.blog-flex #interaction-overlay',
+  'body.blog-flex #stock-chart',
+  'body.blog-flex #stock-subcharts',
+  'body.blog-flex #timer-trees',
+]) {
+  const declarations = mobileDeclarations(selector);
+  assert.notEqual(declarations.length, 0, `${selector} should have a compact mobile layout`);
+  assert.ok(
+    declarations.some((rule) => /display\s*:\s*block\b/.test(rule))
+      && declarations.every((rule) => !/display\s*:\s*none\b/.test(rule)),
+    `${selector} should remain visible on mobile`,
+  );
+}
+
+assert.ok(
+  mobileDeclarations('body.blog-flex #interaction-overlay').some(
+    (rule) => /height\s*:/.test(rule) && /max-width\s*:/.test(rule) && /pointer-events\s*:\s*none\b/.test(rule),
+  ),
+  'mobile interaction overlay should remain compact without blocking the reader',
+);
+assert.ok(
+  mobileDeclarations('body.blog-flex #growth').some((rule) => /overflow-x\s*:\s*auto\b/.test(rule))
+    && mobileDeclarations('body.blog-flex #growth-container').some(
+      (rule) => /min-height\s*:/.test(rule) && /min-width\s*:/.test(rule),
+    ),
+  'mobile stock charts should remain in a constrained horizontally scrollable shelf',
+);
+assert.ok(
+  mobileDeclarations('body.blog-flex #timer').some((rule) => /overflow-x\s*:\s*auto\b/.test(rule))
+    && mobileDeclarations('body.blog-flex #timer-trees').some(
+      (rule) => /height\s*:/.test(rule) && /width\s*:/.test(rule),
+    ),
+  'mobile timer trees should remain in a compact horizontally scrollable shelf',
+);
+
 assert.ok(
   mobileDeclarations('body.blog-flex #user-interaction-container').some((rule) => /overflow-x\s*:\s*auto\b/.test(rule)),
   'mobile cube and swirls should share a horizontally scrollable instrument shelf',

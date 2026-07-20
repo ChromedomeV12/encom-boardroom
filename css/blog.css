@@ -251,7 +251,40 @@ body.blog-flex .blog-interaction:focus-within .interaction-title {
   body.blog-flex #stock-chart,
   body.blog-flex #stock-subcharts,
   body.blog-flex #timer-trees {
-    display: none !important;
+    display: block !important;
+  }
+
+  body.blog-flex #interaction-overlay {
+    align-self: end;
+    bottom: auto;
+    grid-column: 1;
+    grid-row: 1;
+    height: 72px;
+    max-width: 296px;
+    pointer-events: none;
+    position: relative !important;
+    width: 100%;
+  }
+
+  body.blog-flex #growth {
+    overflow-x: auto !important;
+  }
+
+  body.blog-flex #growth-container {
+    min-height: 190px;
+    min-width: 600px;
+    position: relative;
+  }
+
+  body.blog-flex #timer {
+    min-height: 190px;
+    overflow-x: auto !important;
+  }
+
+  body.blog-flex #timer-trees {
+    height: 30px;
+    max-width: none;
+    width: 490px;
   }
 
   body.blog-flex .blog-interaction {
