@@ -232,16 +232,17 @@ BlogController.openPost = function (slug) {
   state.readerScrollY = window.scrollY;
   state.readerFocusStack.push(document.activeElement);
   emit("post-open", { slug: slug, post: post });
+  emit("reader-open", {}); // Signal for motion policy
   pushUrl({ post: slug });
   // The reader UI is rendered by the adapter; we just manage state + signals.
   // Focus management happens in the adapter's reader implementation.
 };
-
 BlogController.closePost = function () {
   if (!state.selectedSlug) return;
   var slug = state.selectedSlug;
   state.selectedSlug = null;
   emit("post-close", { slug: slug });
+  emit("reader-close", {}); // Signal for motion policy
   // Restore the lens URL.
   pushUrl({ lens: state.lens }, { replace: true });
   // Restore focus.

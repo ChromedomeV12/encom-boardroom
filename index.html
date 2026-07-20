@@ -842,6 +842,49 @@
                 </p>
             </div>
         </div>
+        <!-- Reduced-effects toggle button -->
+        <button id="reduced-effects-toggle" 
+                aria-pressed="false" 
+                style="position: fixed; bottom: 10px; right: 10px; z-index: 9999; 
+                       padding: 8px 12px; font-family: 'Inconsolata', monospace; 
+                       font-size: 11px; background: rgba(0, 238, 238, 0.2); 
+                       border: 1px solid #00eeee; color: #00eeee; cursor: pointer;">
+            Reduced Effects
+        </button>
+        <script>
+            (function() {
+                var toggle = document.getElementById('reduced-effects-toggle');
+                if (!toggle) return;
+                
+                // Initialize from localStorage
+                var isEnabled = localStorage.getItem('encom-reduced-effects') === 'true';
+                toggle.setAttribute('aria-pressed', isEnabled);
+                if (isEnabled) {
+                    document.body.classList.add('reduced-effects');
+                }
+                
+                toggle.addEventListener('click', function() {
+                    var currentState = toggle.getAttribute('aria-pressed') === 'true';
+                    var newState = !currentState;
+                    toggle.setAttribute('aria-pressed', newState);
+                    
+                    // Use motion policy if available
+                    if (window.motionPolicy && typeof window.motionPolicy.setReducedEffects === 'function') {
+                        window.motionPolicy.setReducedEffects(newState);
+                    } else {
+                        // Fallback for when motion policy isn't loaded yet
+                        localStorage.setItem('encom-reduced-effects', newState ? 'true' : 'false');
+                        if (newState) {
+                            document.body.classList.add('reduced-effects');
+                        } else {
+                            document.body.classList.remove('reduced-effects');
+                        }
+                    }
+                });
+            })();
+        </script>
+
+
         <!-- ref:include analytics -->
         <!-- endref -->
     </body>

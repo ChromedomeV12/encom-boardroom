@@ -364,6 +364,10 @@ Boardroom.animate = function(){
 
 };
 
+Boardroom.resetAnimationClock = function(){
+    lastTime = Date.now();
+};
+
 Boardroom.message = function(message){
 
     if(message.stream != streamType || !globe){

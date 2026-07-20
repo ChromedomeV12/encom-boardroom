@@ -2,6 +2,7 @@ var $ = require("jquery"),
     EventSource = require("event-source"),
     Boardroom = require("./Boardroom.js"),
     BlogController = require("./BlogController.js"),
+    MotionController = require("./MotionController.js"),
     PleaseRotate = require("pleaserotate.js"),
     init = false;
 
@@ -166,11 +167,32 @@ PleaseRotate.start({onHide: function(){
     $("#boardroom").center();
     LightTable.show();
 
+    // Create motion policy with browser dependencies
+    var motionPolicy = MotionController.create({
+        document: window.document,
+        matchMedia: window.matchMedia.bind(window),
+        IntersectionObserver: window.IntersectionObserver,
+        localStorage: window.localStorage,
+        boardroomElement: document.getElementById('boardroom')
+    });
+    
+    // Expose motion policy globally for the toggle button
+    window.motionPolicy = motionPolicy;
+    
+    // Connect BlogController reader signals to motion policy
+    BlogController.on('reader-open', function() {
+        motionPolicy.setReaderOpen(true);
+    });
+    BlogController.on('reader-close', function() {
+        motionPolicy.setReaderOpen(false);
+        motionPolicy.resetAnimationClock();
+    });
+
     var animate = function(){
 
         if(active === "lt"){
             LightTable.animate();
-        } else {
+        } else if (motionPolicy.shouldTick('boardroom')) {
             Boardroom.animate()
         }
 

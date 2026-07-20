@@ -406,3 +406,36 @@ body.blog-flex .blog-interaction:focus-within .interaction-title {
     margin: 10px 10px 0;
   }
 }
+
+/* M6: Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  /* Pause ENCOM CSS animations */
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  
+  /* Preserve rendered state but stop motion */
+  .lt-header-animator-left,
+  .lt-header-animator-right {
+    animation: none !important;
+  }
+}
+
+/* M6: Reduced-effects mode (4fps throttle) */
+body.reduced-effects .lt-header-animator-left,
+body.reduced-effects .lt-header-animator-right {
+  opacity: 0.7;
+  filter: blur(0.5px);
+}
+
+body.reduced-effects .content-container {
+  box-shadow: 0 0 5px rgba(0, 238, 238, 0.3) !important;
+}
+
+body.reduced-effects *, 
+body.reduced-effects *::before, 
+body.reduced-effects *::after {
+  transition-timing-function: step-end !important;
+}
