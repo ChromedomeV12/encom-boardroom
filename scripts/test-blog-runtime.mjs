@@ -159,6 +159,10 @@ assert.ok(
   ),
   'touch keyboard should remain visible in a compact mobile layout',
 );
+assert.ok(
+  mobileDeclarations('body.blog-flex #lt-right-column').some((rule) => /overflow-x\s*:\s*auto\b/.test(rule)),
+  'touch keyboard should remain reachable through a horizontally scrollable shelf at narrow widths',
+);
 
 assert.match(blogCss, /body\.blog-flex #boardroom/, 'blog CSS should own responsive boardroom layout');
 assert.match(blogCss, /display: grid;/, 'blog CSS should use grid/flex-style layout instead of only fixed boxes');

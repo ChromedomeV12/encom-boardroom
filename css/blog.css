@@ -369,6 +369,7 @@ body.blog-flex .blog-interaction:focus-within .interaction-title {
     position: relative !important;
     top: auto !important;
     width: 100% !important;
+    overflow-x: auto;
   }
 
   body.blog-flex #lt-globalization {
