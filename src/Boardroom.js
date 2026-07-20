@@ -172,11 +172,17 @@ Boardroom.init = function(_streamType, data, _blogMode){
     };
 
     if(streamType === "blog"){
-        $("#user-interaction-header").text(("OBSIDIAN " + blogMode + " FEED").toUpperCase());
-        $("#globalization-header").text("BLOG GLOBALIZATION");
-        $("#growth-header").text("READING PERFORMANCE");
-        $("#media-header").text("POST SNAPSHOTS");
+        $("#user-interaction-header").text("ARCHIVE REPLAY");
+        $("#globalization-header").text("ARCHIVE GEOGRAPHY");
+        $("#growth-header").text("ARCHIVE GROWTH");
+        $("#media-header").text("POST MEDIA");
         $("#timer-header").text("TIME SINCE ARCHIVE BOOT");
+        // Remove upstream placeholder copy from active blog panels.
+        $("#media-top-info").html("<span>hero images</span><span>attachments</span><span>related artwork</span>");
+        $("#media-bottom-info").html("<span>archive media</span><span>referenced assets</span>");
+        $("#media-top-blinkies h3:first").text("TAG FREQUENCY");
+        $("#media-bottom-blinkies h3:first").text("BACKLINK DENSITY");
+        $("#interaction h3").text("ARCHIVE RESULTS");
     } else {
         $("#user-interaction-header").text(streamType.toUpperCase() + " LIVE DATA FEED");
         $("#globalization-header").text(streamType.toUpperCase() + " GLOBALIZATION");
@@ -381,11 +387,13 @@ Boardroom.message = function(message){
  
     if(interactionContainer && interactionContainer[0].lastChild){
         var lastChild = interactionContainer[0].lastChild;
+        var slugAttr = message.slug ? ' data-post-slug="' + escapeHtml(message.slug) + '"' : '';
         lastChild.innerHTML = '<li class="interaction-username">' + message.username + '</li>' + 
             '<li class="interaction-title">' + message.title + '</li>' + 
             '<li class="interaction-type">' + (message.type ? message.type : "") + '</li>' + 
             '<li class="interaction-size">' + (message.size ? message.size : "") + '</li>' + 
             '<li class="interaction-popularity">' + (message.popularity ? message.popularity : "")+ '</li>';
+        if (slugAttr) lastChild.setAttribute('data-post-slug', message.slug);
 
         if(message.popularity > 100){
             lastChild.innerHTML = '<li class="interaction-popular">!</li>' + lastChild.innerHTML;

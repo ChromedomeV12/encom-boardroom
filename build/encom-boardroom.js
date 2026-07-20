@@ -81755,10 +81755,67 @@ BlogController.onBoardroomReady = function () {
   if (state.ready) return;
   state.ready = true;
   emit("ready", { lens: state.lens, postCount: state.posts.length });
+  // Start archive replay at a controlled cadence.
+  startArchiveReplay();
   // If a post was deep-linked, open it now that the boardroom is ready.
   if (state.selectedSlug) {
     BlogController.openPost(state.selectedSlug);
   }
+};
+
+// ---- BlogSignal / archive replay ----------------------------------------
+// Convert each post into a deterministic archive signal and replay it
+// through the boardroom at a short controlled cadence. This is honestly
+// labelled ARCHIVE REPLAY, not a live feed.
+var replayTimer = null;
+var replayIndex = 0;
+
+function postToSignal(post) {
+  return {
+    stream: "blog",
+    archiveReplay: true,
+    username: post.category || "archive",
+    title: post.title,
+    type: (post.tags && post.tags[0]) || post.category || "post",
+    size: post.readTime ? post.readTime + "m" : "",
+    popularity: post.linkDegree || 0,
+    latlon: post.location ? { lat: post.location.lat, lon: post.location.lng } : null,
+    location: post.location ? (post.location.label || post.location.lat + "," + post.location.lng) : "",
+    picSmall: post.hero ? "blog-assets/" + post.hero : "",
+    picLarge: post.hero ? "blog-assets/" + post.hero : "",
+    slug: post.slug,
+    date: post.date,
+    wordCount: post.wordCount
+  };
+}
+
+function startArchiveReplay() {
+  clearInterval(replayTimer);
+  replayIndex = 0;
+  var posts = state.posts;
+  if (!posts.length) return;
+  // Replay one signal every 1.2s. The boardroom reacts to each.
+  replayTimer = setInterval(function () {
+    if (replayIndex >= posts.length) {
+      clearInterval(replayTimer);
+      replayTimer = null;
+      emit("archive-replay-complete", { count: posts.length });
+      return;
+    }
+    var signal = postToSignal(posts[replayIndex]);
+    emit("archive-signal", signal);
+    // Also push through the boardroom's message path if available.
+    if (window.Boardroom && typeof window.Boardroom.message === "function") {
+      try { window.Boardroom.message(signal); } catch (e) { /* swallow */ }
+    }
+    replayIndex++;
+  }, 1200);
+}
+
+BlogController.postToSignal = postToSignal;
+BlogController.startArchiveReplay = startArchiveReplay;
+BlogController.stopArchiveReplay = function () {
+  if (replayTimer) { clearInterval(replayTimer); replayTimer = null; }
 };
 
 // ---- URL routing ---------------------------------------------------------
@@ -82102,11 +82159,17 @@ Boardroom.init = function(_streamType, data, _blogMode){
     };
 
     if(streamType === "blog"){
-        $("#user-interaction-header").text(("OBSIDIAN " + blogMode + " FEED").toUpperCase());
-        $("#globalization-header").text("BLOG GLOBALIZATION");
-        $("#growth-header").text("READING PERFORMANCE");
-        $("#media-header").text("POST SNAPSHOTS");
+        $("#user-interaction-header").text("ARCHIVE REPLAY");
+        $("#globalization-header").text("ARCHIVE GEOGRAPHY");
+        $("#growth-header").text("ARCHIVE GROWTH");
+        $("#media-header").text("POST MEDIA");
         $("#timer-header").text("TIME SINCE ARCHIVE BOOT");
+        // Remove upstream placeholder copy from active blog panels.
+        $("#media-top-info").html("<span>hero images</span><span>attachments</span><span>related artwork</span>");
+        $("#media-bottom-info").html("<span>archive media</span><span>referenced assets</span>");
+        $("#media-top-blinkies h3:first").text("TAG FREQUENCY");
+        $("#media-bottom-blinkies h3:first").text("BACKLINK DENSITY");
+        $("#interaction h3").text("ARCHIVE RESULTS");
     } else {
         $("#user-interaction-header").text(streamType.toUpperCase() + " LIVE DATA FEED");
         $("#globalization-header").text(streamType.toUpperCase() + " GLOBALIZATION");
@@ -82311,11 +82374,13 @@ Boardroom.message = function(message){
  
     if(interactionContainer && interactionContainer[0].lastChild){
         var lastChild = interactionContainer[0].lastChild;
+        var slugAttr = message.slug ? ' data-post-slug="' + escapeHtml(message.slug) + '"' : '';
         lastChild.innerHTML = '<li class="interaction-username">' + message.username + '</li>' + 
             '<li class="interaction-title">' + message.title + '</li>' + 
             '<li class="interaction-type">' + (message.type ? message.type : "") + '</li>' + 
             '<li class="interaction-size">' + (message.size ? message.size : "") + '</li>' + 
             '<li class="interaction-popularity">' + (message.popularity ? message.popularity : "")+ '</li>';
+        if (slugAttr) lastChild.setAttribute('data-post-slug', message.slug);
 
         if(message.popularity > 100){
             lastChild.innerHTML = '<li class="interaction-popular">!</li>' + lastChild.innerHTML;
@@ -85064,6 +85129,7 @@ require("jquery-ui");
 // (js/blog-adapter.js, loaded as a separate <script>) can consume it
 // without a require() call. Init it with the generated post data.
 window.BlogController = BlogController;
+window.Boardroom = Boardroom;
 if (window.BLOG_POSTS) {
     BlogController.init(window.BLOG_POSTS, window.BLOG_INDEX || {});
 }

@@ -10,6 +10,7 @@ require("jquery-ui");
 // (js/blog-adapter.js, loaded as a separate <script>) can consume it
 // without a require() call. Init it with the generated post data.
 window.BlogController = BlogController;
+window.Boardroom = Boardroom;
 if (window.BLOG_POSTS) {
     BlogController.init(window.BLOG_POSTS, window.BLOG_INDEX || {});
 }

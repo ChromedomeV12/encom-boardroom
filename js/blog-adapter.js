@@ -248,13 +248,22 @@
   if (ctrl) {
     ctrl.on('post-open', function (payload) {
       openReaderLocal(payload.slug);
+      // Emit a reader-activity signal so the dashboard reacts.
+      ctrl.emit('reader-activity', { type: 'open', slug: payload.slug });
     });
     ctrl.on('post-close', function () {
       closeReaderLocal();
     });
     ctrl.on('lens-change', function (payload) {
       // Update the interaction feed header to reflect the active lens.
-      text('#user-interaction-header', ('OBSIDIAN ' + payload.lens + ' FEED').toUpperCase());
+      text('#user-interaction-header', 'ARCHIVE REPLAY');
+      ctrl.emit('reader-activity', { type: 'lens', lens: payload.lens });
+    });
+    ctrl.on('search', function (payload) {
+      ctrl.emit('reader-activity', { type: 'search', query: payload.query });
+    });
+    ctrl.on('filter-tag', function (payload) {
+      ctrl.emit('reader-activity', { type: 'tag', tag: payload.tag });
     });
   }
 

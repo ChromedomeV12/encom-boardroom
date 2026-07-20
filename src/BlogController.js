@@ -65,10 +65,67 @@ BlogController.onBoardroomReady = function () {
   if (state.ready) return;
   state.ready = true;
   emit("ready", { lens: state.lens, postCount: state.posts.length });
+  // Start archive replay at a controlled cadence.
+  startArchiveReplay();
   // If a post was deep-linked, open it now that the boardroom is ready.
   if (state.selectedSlug) {
     BlogController.openPost(state.selectedSlug);
   }
+};
+
+// ---- BlogSignal / archive replay ----------------------------------------
+// Convert each post into a deterministic archive signal and replay it
+// through the boardroom at a short controlled cadence. This is honestly
+// labelled ARCHIVE REPLAY, not a live feed.
+var replayTimer = null;
+var replayIndex = 0;
+
+function postToSignal(post) {
+  return {
+    stream: "blog",
+    archiveReplay: true,
+    username: post.category || "archive",
+    title: post.title,
+    type: (post.tags && post.tags[0]) || post.category || "post",
+    size: post.readTime ? post.readTime + "m" : "",
+    popularity: post.linkDegree || 0,
+    latlon: post.location ? { lat: post.location.lat, lon: post.location.lng } : null,
+    location: post.location ? (post.location.label || post.location.lat + "," + post.location.lng) : "",
+    picSmall: post.hero ? "blog-assets/" + post.hero : "",
+    picLarge: post.hero ? "blog-assets/" + post.hero : "",
+    slug: post.slug,
+    date: post.date,
+    wordCount: post.wordCount
+  };
+}
+
+function startArchiveReplay() {
+  clearInterval(replayTimer);
+  replayIndex = 0;
+  var posts = state.posts;
+  if (!posts.length) return;
+  // Replay one signal every 1.2s. The boardroom reacts to each.
+  replayTimer = setInterval(function () {
+    if (replayIndex >= posts.length) {
+      clearInterval(replayTimer);
+      replayTimer = null;
+      emit("archive-replay-complete", { count: posts.length });
+      return;
+    }
+    var signal = postToSignal(posts[replayIndex]);
+    emit("archive-signal", signal);
+    // Also push through the boardroom's message path if available.
+    if (window.Boardroom && typeof window.Boardroom.message === "function") {
+      try { window.Boardroom.message(signal); } catch (e) { /* swallow */ }
+    }
+    replayIndex++;
+  }, 1200);
+}
+
+BlogController.postToSignal = postToSignal;
+BlogController.startArchiveReplay = startArchiveReplay;
+BlogController.stopArchiveReplay = function () {
+  if (replayTimer) { clearInterval(replayTimer); replayTimer = null; }
 };
 
 // ---- URL routing ---------------------------------------------------------

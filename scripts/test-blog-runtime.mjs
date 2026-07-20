@@ -56,6 +56,13 @@ assert.match(controller, /onBoardroomReady/, 'controller should expose a boardro
 assert.match(controller, /openPost/, 'controller should expose openPost');
 assert.match(controller, /closePost/, 'controller should expose closePost');
 assert.match(controller, /getVisiblePosts/, 'controller should expose getVisiblePosts for the current lens');
+assert.match(controller, /archive-signal/, 'controller should emit archive signals');
+assert.match(controller, /postToSignal/, 'controller should convert posts to archive signals');
+assert.match(controller, /startArchiveReplay/, 'controller should start archive replay');
+assert.match(controller, /ARCHIVE REPLAY|archiveReplay/, 'controller should label replay honestly');
+assert.match(boardroom, /ARCHIVE REPLAY/, 'boardroom should label the feed as ARCHIVE REPLAY');
+assert.match(boardroom, /ARCHIVE GEOGRAPHY/, 'boardroom should label globalization as archive geography');
+assert.match(boardroom, /ARCHIVE GROWTH/, 'boardroom should label growth as archive growth');
 
 assert.match(bundle, /simulateCommand\("\|cd blog\$"\)/, 'served bundle should type cd blog');
 assert.match(bundle, /command == "run blog\.exe"/, 'served bundle should execute blog.exe');
@@ -67,6 +74,8 @@ assert.match(bundle, /BlogController/, 'served bundle should include the unified
 assert.match(bundle, /onBoardroomReady/, 'served bundle should wire the boardroom-ready lifecycle');
 
 assert.match(index, /id="boardroom-readme-blog"/, 'blog boardroom readme should exist');
+assert.match(index, /ENCOM ARCHIVE INFO/, 'index should have an archive info readme');
+assert.doesNotMatch(index, /Next build step: replace the placeholder/, 'index should not have stale placeholder copy');
 assert.match(index, /css\/blog\.css\?v=blog-fork-11/, 'responsive blog stylesheet should be loaded after ENCOM styles');
 assert.match(index, /js\/blog-posts\.js\?v=blog-fork-11/, 'generated blog data should be cache-busted');
 assert.match(index, />[^<]*Featured[^<]*</, 'index should label the featured folder');
