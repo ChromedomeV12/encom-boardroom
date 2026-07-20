@@ -118,6 +118,8 @@ async function testRssFeedValid() {
   assert.match(rss, /<title>Post A<\/title>/);
   assert.match(rss, /<title>Post B<\/title>/);
   assert.match(rss, /https:\/\/archive\.example\.com\/posts\/post-a\//);
+  assert.match(rss, /<lastBuildDate>Mon, 15 Jun 2026 00:00:00 GMT<\/lastBuildDate>/,
+    'RSS build date should derive from content for deterministic output');
   // Both items present
   const itemCount = (rss.match(/<item>/g) || []).length;
   assert.equal(itemCount, 2);

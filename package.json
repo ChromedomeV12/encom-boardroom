@@ -33,8 +33,20 @@
     "marked": "^12.0.2"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodejs stream-server.js"
+    "build:content": "node scripts/build-blog-data.mjs",
+    "build:publication": "node scripts/publish-blog.mjs",
+    "build:bundle": "node node_modules/browserify/bin/cmd.js src/main.js -o build/encom-boardroom.js",
+    "build": "npm run build:publication && npm run build:bundle",
+    "validate:content": "node scripts/test-blog-data.mjs",
+    "test:blog-data": "node scripts/test-blog-data.mjs",
+    "test:blog-router": "node scripts/test-blog-router.mjs",
+    "test:blog-publication": "node scripts/test-blog-publication.mjs",
+    "test:blog-runtime": "node scripts/test-blog-runtime.mjs",
+    "test:motion-policy": "node test/motion-policy.test.mjs",
+    "test:all": "npm run test:blog-data && npm run test:blog-router && npm run test:blog-publication && npm run test:blog-runtime && npm run test:motion-policy",
+    "test": "npm run build && npm run test:all",
+    "serve": "node scripts/serve-static.mjs 4322",
+    "start": "node stream-server.js"
   },
   "repository": {
     "type": "git",

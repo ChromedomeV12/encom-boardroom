@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://encom-archive.local/posts/readable-interface-notes/</loc><lastmod>2026-06-14</lastmod></url>
-  <url><loc>https://encom-archive.local/posts/welcome-to-the-grid/</loc><lastmod>2026-06-15</lastmod></url>
-  <url><loc>https://encom-archive.local/</loc></url>
-  <url><loc>https://encom-archive.local/featured/</loc></url>
-  <url><loc>https://encom-archive.local/archive/</loc></url>
-  <url><loc>https://encom-archive.local/tags/interface/</loc></url>
-  <url><loc>https://encom-archive.local/tags/obsidian/</loc></url>
-  <url><loc>https://encom-archive.local/tags/notes/</loc></url>
-  <url><loc>https://encom-archive.local/tags/readability/</loc></url>
-  <url><loc>https://encom-archive.local/tags/design/</loc></url>
-  <url><loc>https://encom-archive.local/categories/design-log/</loc></url>
-  <url><loc>https://encom-archive.local/archive/2026/</loc></url>
+  <url><loc>http://127.0.0.1:4322/posts/readable-interface-notes/</loc><lastmod>2026-06-14</lastmod></url>
+  <url><loc>http://127.0.0.1:4322/posts/welcome-to-the-grid/</loc><lastmod>2026-06-15</lastmod></url>
+  <url><loc>http://127.0.0.1:4322/</loc></url>
+  <url><loc>http://127.0.0.1:4322/featured/</loc></url>
+  <url><loc>http://127.0.0.1:4322/archive/</loc></url>
+  <url><loc>http://127.0.0.1:4322/tags/interface/</loc></url>
+  <url><loc>http://127.0.0.1:4322/tags/obsidian/</loc></url>
+  <url><loc>http://127.0.0.1:4322/tags/notes/</loc></url>
+  <url><loc>http://127.0.0.1:4322/tags/readability/</loc></url>
+  <url><loc>http://127.0.0.1:4322/tags/design/</loc></url>
+  <url><loc>http://127.0.0.1:4322/categories/design-log/</loc></url>
+  <url><loc>http://127.0.0.1:4322/archive/2026/</loc></url>
 </urlset>

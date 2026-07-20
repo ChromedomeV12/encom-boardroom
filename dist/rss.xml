@@ -2,22 +2,22 @@
 <rss version="2.0">
   <channel>
     <title>ENCOM Archive</title>
-    <link>https://encom-archive.local</link>
+    <link>http://127.0.0.1:4322</link>
     <description>An Obsidian-powered blog in an ENCOM boardroom interface.</description>
     <language>en</language>
-    <lastBuildDate>Mon, 20 Jul 2026 02:00:23 GMT</lastBuildDate>
+    <lastBuildDate>Mon, 15 Jun 2026 00:00:00 GMT</lastBuildDate>
     <item>
       <title>Readable Interface Notes</title>
-      <link>https://encom-archive.local/posts/readable-interface-notes/</link>
-      <guid isPermaLink="true">https://encom-archive.local/posts/readable-interface-notes/</guid>
+      <link>http://127.0.0.1:4322/posts/readable-interface-notes/</link>
+      <guid isPermaLink="true">http://127.0.0.1:4322/posts/readable-interface-notes/</guid>
       <description>Guidelines for keeping a boardroom-inspired interface comfortable for actual reading.</description>
       <pubDate>Sun, 14 Jun 2026 00:00:00 GMT</pubDate>
       <category>Design Log</category>
     </item>
     <item>
       <title>Welcome to the Grid</title>
-      <link>https://encom-archive.local/posts/welcome-to-the-grid/</link>
-      <guid isPermaLink="true">https://encom-archive.local/posts/welcome-to-the-grid/</guid>
+      <link>http://127.0.0.1:4322/posts/welcome-to-the-grid/</link>
+      <guid isPermaLink="true">http://127.0.0.1:4322/posts/welcome-to-the-grid/</guid>
       <description>A sample post showing readable ENCOM styling, wikilinks, callouts, and Obsidian image embeds.</description>
       <pubDate>Mon, 15 Jun 2026 00:00:00 GMT</pubDate>
       <category>Design Log</category>

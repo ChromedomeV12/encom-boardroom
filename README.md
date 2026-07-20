@@ -1,72 +1,204 @@
-Encom Boardroom
-=================
+# ENCOM Archive OS
 
-An HTML5 recreation of the [Boardroom
-Scene](http://work.gmunk.com/TRON-Board-Room) in Disney's [Tron:
-Legacy](http://www.imdb.com/title/tt1104001/).  It currently displays realtime
-data from GitHub and Wikipedia to make it a bit more fun.  View it in action at
-https://www.robscanlon.com/encom-boardroom/ .
+This repository turns the original [ENCOM Boardroom](https://github.com/arscan/encom-boardroom) into an Obsidian-powered archive and blog. The light table, globe, cube, swirls, keyboard, charts, and other boardroom systems remain part of the interface. Markdown articles also get canonical static pages that work without WebGL or client-side JavaScript.
 
 ![Boardroom light table](https://raw.github.com/arscan/encom-boardroom/master/images/screenshot_lighttable.jpg "Boardroom light table")
 
 ![Boardroom screen](https://raw.github.com/arscan/encom-boardroom/master/images/screenshot.jpg "Boardroom screen")
 
-While I attempted to stay true to the film, it simply wasn't practical to
-recreate every element that is portrayed in the scene. The graphics displayed
-in the film contain a remarkable amount of detail despite only being visible
-for a couple of seconds. I am in awe of those that put it together.
+## Requirements
 
-My focus was on the globe and I made it available as a [standalone
-library](https://github.com/arscan/encom-globe) for those interested. The other
-elements are only loose adaptations of the film version. This project is not
-associated with GitHub, Wikipedia, Tron: Legacy, or Disney. It is just a
-tribute.
+- Node.js and npm
+- A browser with WebGL for the boardroom view
+- WebGL is not required for pages under `dist/posts/`
 
-### Usage
-
-The web application can be launched simply by serving up `./index.html`.  If
-you would like the full application, including the feeds from Wikipedia and
-GitHub, install and run the node application as follows:
+Install dependencies once:
 
 ```sh
 npm install
-PORT=8000 node stream-server.js
 ```
 
-Then point your browser at `http://localhost:8000`.
+## Authoring posts
 
-The code isn't particularly well organized right now to quickly add in new
-feeds, but it certainly is possible.  I did split out the globe into its own
-[standalone library](https://github.com/arscan/encom-globe) that can be easily
-reused though.
+Public Obsidian notes live in `content/obsidian`. The build reads `.md` and `.mdx` files recursively. Keep attachments in that directory too, usually under `content/obsidian/attachments`.
 
-### Notable Dependencies
+A post needs a valid `date`. The title defaults to the file name, and the slug defaults to a normalized title, but setting both explicitly makes URLs stable.
 
-* [Node.js](http://nodejs.org/)
-* [Three.js](http://threejs.org/)
-* [Encom Globe](http://www.robscanlon.com/encom-globe)
-* [Hexasphere.js](http://www.robscanlon.com/hexasphere/)
-* [Quadtree2](https://github.com/burninggramma/quadtree2.js)
-* [pleaserotate.js](http://www.github.com/arscan/pleaserotate.js)
+```yaml
+---
+title: Welcome to the Grid
+description: A short summary used for excerpts and metadata.
+date: 2026-06-15
+updated: 2026-06-20
+slug: welcome-to-the-grid
+tags: [interface, obsidian]
+category: Design Log
+featured: true
+draft: false
+aliases: [Grid introduction]
+hero: attachments/signal-panel.svg
+series: Archive notes
+location:
+  lat: 42.3601
+  lng: -71.0589
+  label: Boston
+redirectFrom: [/old-grid-path/]
+themeColor: "#00eeee"
+---
+```
 
-### Feed Info
+Supported fields:
 
-**GitHub:** Data is being streamed in realtime from GitHub's [public timeline
-feed](http://github.com/timeline.json). Location information is retrieved from
-the user's GitHub profile and is mapped using
-[geonames.org](http://geonames.org). Historic 2013 data was retrieved from the
-[GitHub Archive](http://githubarchive.org). User pictures are from
-[Gravatar](http://gravatar.com) and are throttled to under one per second to
-conserve bandwidth.
+- `title`: Post title. Falls back to the file name.
+- `date`: Required publication date. Use `YYYY-MM-DD` or a valid ISO date.
+- `slug`: Canonical URL segment. Falls back to the normalized title.
+- `description`: Preferred excerpt and page description.
+- `updated`: Optional update date.
+- `tags`: String or YAML list.
+- `category`: Defaults to `Notes`.
+- `featured`, `draft`: Boolean flags. Drafts are omitted from all output.
+- `aliases`: Alternate Obsidian titles used when resolving wikilinks.
+- `hero`: Path to a local image or attachment.
+- `series`: Optional series name.
+- `location`: Either `lat, lng` or an object with `lat`, `lng`, and optional `label`.
+- `redirectFrom`: String or list of prior paths retained in metadata.
+- `themeColor`: Optional article theme color.
 
-**Wikipedia:** Data is being streamed in realtime from Wikipedia's [public IRC
-feed](http://meta.wikimedia.org/wiki/IRC_channels#Raw_feeds). Location
-information is only available from anonymous users in the form of IP addresses,
-and is mapped to real locations using [freegeoip.net](http://freegeoip.net).
+Use Obsidian wikilinks for internal links:
 
-### License
+```md
+See [[Readable Interface Notes]].
+See [[Readable Interface Notes|the readability notes]].
+```
+
+Use Obsidian embeds for local assets:
+
+```md
+![[attachments/signal-panel.svg]]
+```
+
+The build rejects duplicate slugs, unresolved wikilinks, invalid dates or locations, path traversal, and missing referenced assets. It also derives excerpts, heading IDs and TOCs, backlinks, related posts, word counts, reading times, tags, categories, and yearly archive data.
+
+## Build and generated output
+
+Build content data only:
+
+```sh
+npm run build:content
+```
+
+This writes:
+
+- `js/blog-posts.js`, containing the `window.BLOG_POSTS` and `window.BLOG_INDEX` runtime contract
+- Referenced files under `blog-assets/`
+
+Publish canonical pages:
+
+```sh
+npm run build:publication
+```
+
+The publication command rebuilds content first, then replaces `dist/` with:
+
+- `dist/posts/<slug>/index.html`
+- `dist/featured/index.html`
+- `dist/tags/<tag>/index.html`
+- `dist/categories/<category>/index.html`
+- `dist/archive/index.html` and yearly archive pages
+- `dist/rss.xml`
+- `dist/sitemap.xml`
+- `dist/manifest.json`
+
+The default canonical site URL is `http://127.0.0.1:4322`. Set production publication values by calling the script directly:
+
+```sh
+node scripts/publish-blog.mjs --site-url=https://example.com --out=dist
+```
+
+Rebuild the Browserify application bundle after changing files under `src/`:
+
+```sh
+npm run build:bundle
+```
+
+Run the complete build with:
+
+```sh
+npm run build
+```
+
+`js/blog-posts.js`, `blog-assets/`, `dist/`, and `build/encom-boardroom.js` are generated and tracked. Do not edit them by hand. Regenerate and commit them with the source or content change that produced them.
+
+## Validation and tests
+
+Validate content data:
+
+```sh
+npm run validate:content
+```
+
+Run every build and test:
+
+```sh
+npm test
+```
+
+Focused commands are also available:
+
+```sh
+npm run test:blog-data
+npm run test:blog-publication
+npm run test:blog-router
+npm run test:blog-runtime
+npm run test:motion-policy
+```
+
+The project handoff checks are `node scripts/test-blog-data.mjs` and `node scripts/test-blog-runtime.mjs`. Publication, router, and motion policy tests cover the added static and interactive contracts.
+
+## Local server
+
+Serve the repository on the standard development port:
+
+```sh
+npm run serve
+```
+
+Open `http://127.0.0.1:4322/` for the ENCOM interface. Canonical generated pages are available under `http://127.0.0.1:4322/dist/`.
+
+The legacy realtime stream server remains available through `npm start`. The archive blog does not require it.
+
+## Archive controls
+
+The five light-table folders open Featured, Latest, Archive, Topics, and Search / Index views. They support pointer and keyboard activation.
+
+The accessible terminal accepts the same command parser as the simulated ENCOM keyboard:
+
+```text
+help
+featured
+latest
+tags
+tag <name>
+year <yyyy>
+search <query>
+open <slug>
+back
+```
+
+Article rows are keyboard accessible. The overlay reader supports Escape, trapped focus, background inert behavior, scroll restoration, and browser history. Canonical article pages remain the fallback when boardroom effects or WebGL are unavailable.
+
+Use the `Reduced Effects` control in the boardroom footer for a persistent 4 fps performance mode. The app also respects `prefers-reduced-motion`, pauses expensive rendering while the document or boardroom is offscreen, and pauses boardroom animation while the reader covers it.
+
+## Upstream project
+
+Robert Scanlon created the original ENCOM Boardroom as an HTML5 recreation of the boardroom scene from *Tron: Legacy*. The globe is also available as the standalone [ENCOM Globe](https://github.com/arscan/encom-globe) library. This project is not associated with Tron: Legacy or Disney.
+
+Notable upstream dependencies include Node.js, Three.js, ENCOM Globe, Hexasphere.js, Quadtree2.js, and pleaserotate.js.
+
+## License
 
 The MIT License (MIT)
+
 Copyright (c) 2014-2017 Robert Scanlon
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

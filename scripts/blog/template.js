@@ -199,6 +199,13 @@ export function renderRss(posts, siteUrl, title, description) {
     </item>`;
   }).join('\n');
 
+  let lastBuildTime = 0;
+  posts.forEach((post) => {
+    const timestamp = Date.parse(post.updated || post.date || '');
+    if (Number.isFinite(timestamp) && timestamp > lastBuildTime) lastBuildTime = timestamp;
+  });
+  const lastBuildDate = lastBuildTime ? new Date(lastBuildTime).toUTCString() : '';
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
@@ -206,7 +213,7 @@ export function renderRss(posts, siteUrl, title, description) {
     <link>${escapeXml(siteUrl)}</link>
     <description>${escapeXml(description)}</description>
     <language>en</language>
-    <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
+    <lastBuildDate>${lastBuildDate}</lastBuildDate>
 ${items}
   </channel>
 </rss>`;
