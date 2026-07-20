@@ -25,6 +25,17 @@ assert.match(lightTable, /BLOG_LAUNCH_MODE = "latest"/, 'latest folder should se
 assert.match(lightTable, /BLOG_LAUNCH_MODE = "archive"/, 'archive folder should set archive mode');
 assert.match(lightTable, /command == "run blog\.exe"/, 'terminal should execute blog.exe');
 assert.match(lightTable, /currentDir == "blog"/, 'terminal should track blog directory');
+assert.match(lightTable, /BLOG_LAUNCH_MODE = "topics"/, 'topics folder should set topics mode');
+assert.match(lightTable, /BLOG_LAUNCH_MODE = "search"/, 'search folder should set search mode');
+assert.match(lightTable, /command == "help"/, 'terminal should support help command');
+assert.match(lightTable, /command == "featured"/, 'terminal should support featured command');
+assert.match(lightTable, /command == "latest"/, 'terminal should support latest command');
+assert.match(lightTable, /command == "tags"/, 'terminal should support tags command');
+assert.match(lightTable, /command\.indexOf\("tag "\)/, 'terminal should support tag command');
+assert.match(lightTable, /command\.indexOf\("year "\)/, 'terminal should support year command');
+assert.match(lightTable, /command\.indexOf\("search "\)/, 'terminal should support search command');
+assert.match(lightTable, /command\.indexOf\("open "\)/, 'terminal should support open command');
+assert.match(lightTable, /command == "back"/, 'terminal should support back command');
 
 assert.match(main, /view === "blog"/, 'main switch should support blog stream');
 assert.match(main, /screensaver\.text\("BLOG"\)/, 'blog stream should use BLOG screensaver');
@@ -58,6 +69,11 @@ assert.match(bundle, /onBoardroomReady/, 'served bundle should wire the boardroo
 assert.match(index, /id="boardroom-readme-blog"/, 'blog boardroom readme should exist');
 assert.match(index, /css\/blog\.css\?v=blog-fork-11/, 'responsive blog stylesheet should be loaded after ENCOM styles');
 assert.match(index, /js\/blog-posts\.js\?v=blog-fork-11/, 'generated blog data should be cache-busted');
+assert.match(index, />[^<]*Featured[^<]*</, 'index should label the featured folder');
+assert.match(index, />[^<]*Latest[^<]*</, 'index should label the latest folder');
+assert.match(index, />[^<]*Archive[^<]*</, 'index should label the archive folder');
+assert.match(index, />[^<]*Topics[^<]*</, 'index should label the topics folder');
+assert.match(index, />[^<]*Search \/ Index[^<]*</, 'index should label the search folder');
 assert.doesNotMatch(adapter, /blog-mini-list/, 'README mini post launcher should stay removed');
 assert.doesNotMatch(adapter, /boardroom-readme-test/, 'adapter should not overwrite the test readme as blog copy');
 assert.match(adapter, /classList\.add\('blog-flex'\)/, 'adapter should enable blog responsive layout class');

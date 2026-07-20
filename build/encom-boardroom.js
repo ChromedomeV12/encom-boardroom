@@ -83202,13 +83202,23 @@ LightTable.init = function(_hideFn){
     });
 
     $("#lt-launch-bitcoin").click(function(){
+        window.BLOG_LAUNCH_MODE = "topics";
         $(this).find(".folder-big").css("background-color", "#fff");
-        simulateCommand("cd bitcoin$");
+        simulateCommand("|cd blog$");
+        simulateCommand("ls$");
+        simulateCommand("run blog.exe$");
+        $(document).off();
+        $(".folder-container").off();
     });
 
     $("#lt-launch-unknown").click(function(){
-        $(this).find(".folder-big").css("background-color", "#fff");
-        simulateCommand("cd unknown$");
+        window.BLOG_LAUNCH_MODE = "search";
+        $(this).find(".folder-small").css("background-color", "#fff");
+        simulateCommand("|cd blog$");
+        simulateCommand("ls$");
+        simulateCommand("run blog.exe$");
+        $(document).off();
+        $(".folder-container").off();
     });
 
     $("#lt-keyboard div").mousedown(function(event){
@@ -83754,6 +83764,60 @@ function executeCommand(){
             writePrompt();
         }
 
+    // --- Blog archive terminal commands (only in blog directory) ---
+    } else if(currentDir == "blog" && command == "help"){
+        writeResponse([
+            "ARCHIVE COMMANDS:",
+            "  featured      — open the featured lens",
+            "  latest        — open the latest lens (newest first)",
+            "  tags          — list all tags",
+            "  tag &lt;name&gt;   — filter by tag",
+            "  year &lt;yyyy&gt;  — filter by year",
+            "  search &lt;query&gt; — search posts",
+            "  open &lt;slug&gt;  — open a post by slug",
+            "  back          — return to the light table"
+        ].join("\n"));
+        writePrompt();
+    } else if(currentDir == "blog" && command == "featured"){
+        if(window.BlogController){ window.BlogController.setLens("featured"); }
+        writeResponse("Lens: <span class='highlight'>featured</span>");
+        writePrompt();
+    } else if(currentDir == "blog" && command == "latest"){
+        if(window.BlogController){ window.BlogController.setLens("latest"); }
+        writeResponse("Lens: <span class='highlight'>latest</span>");
+        writePrompt();
+    } else if(currentDir == "blog" && command == "tags"){
+        var tags = window.BLOG_INDEX ? Object.keys(window.BLOG_INDEX.tags || {}) : [];
+        writeResponse(tags.length ? "Tags: " + tags.join(", ") : "No tags.");
+        writePrompt();
+    } else if(currentDir == "blog" && command.indexOf("tag ") == 0){
+        var tagName = command.slice(4).trim();
+        if(window.BlogController){ window.BlogController.setFilterTag(tagName); }
+        writeResponse("Filtering by tag: <span class='highlight'>" + tagName + "</span>");
+        writePrompt();
+    } else if(currentDir == "blog" && command.indexOf("year ") == 0){
+        var yearName = command.slice(5).trim();
+        if(window.BlogController){ window.BlogController.setFilterYear(yearName); }
+        writeResponse("Filtering by year: <span class='highlight'>" + yearName + "</span>");
+        writePrompt();
+    } else if(currentDir == "blog" && command.indexOf("search ") == 0){
+        var query = command.slice(7).trim();
+        if(window.BlogController){ window.BlogController.setSearch(query); }
+        writeResponse("Searching: <span class='highlight'>" + query + "</span>");
+        writePrompt();
+    } else if(currentDir == "blog" && command.indexOf("open ") == 0){
+        var slug = command.slice(5).trim();
+        if(window.BlogController && window.BlogController.getPost(slug)){
+            window.BlogController.openPost(slug);
+            writeResponse("Opening: <span class='highlight'>" + slug + "</span>");
+        } else {
+            writeResponse("<span class='alert'>No post:</span> " + slug);
+        }
+        writePrompt();
+    } else if(currentDir == "blog" && command == "back"){
+        if(window.BlogController){ window.BlogController.closePost(); }
+        writeResponse("Returned to lens.");
+        writePrompt();
     } else if(command == "cd blog"){
         $(".ls-blog").addClass("ls-highlight")
         currentDir = "blog";

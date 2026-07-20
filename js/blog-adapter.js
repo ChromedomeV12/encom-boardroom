@@ -196,11 +196,11 @@
     html('#lt-globalization .content h2', 'BLOG VISUALIZATION ... SELECT ARTICLE <span class="alt-1">.STREAM</span><em>END. PROGRAM</em>');
 
     var folders = [
-      ['#lt-launch-github', 'Featured Stream'],
-      ['#lt-launch-test', 'Latest Stream'],
-      ['#lt-launch-wikipedia', 'Archive Stream'],
-      ['#lt-launch-bitcoin', 'Tags / Soon'],
-      ['#lt-launch-unknown', 'Index / Soon']
+      ['#lt-launch-github', 'Featured'],
+      ['#lt-launch-test', 'Latest'],
+      ['#lt-launch-wikipedia', 'Archive'],
+      ['#lt-launch-bitcoin', 'Topics'],
+      ['#lt-launch-unknown', 'Search / Index']
     ];
 
     folders.forEach(function (entry) {
