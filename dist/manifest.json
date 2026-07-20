@@ -1,0 +1,80 @@
+{
+  "site": "ENCOM Archive",
+  "totalCount": 2,
+  "wordCount": 165,
+  "featuredPosts": [
+    "welcome-to-the-grid"
+  ],
+  "latestPosts": [
+    "welcome-to-the-grid",
+    "readable-interface-notes"
+  ],
+  "tags": {
+    "interface": [
+      "welcome-to-the-grid"
+    ],
+    "obsidian": [
+      "welcome-to-the-grid"
+    ],
+    "notes": [
+      "welcome-to-the-grid"
+    ],
+    "readability": [
+      "readable-interface-notes"
+    ],
+    "design": [
+      "readable-interface-notes"
+    ]
+  },
+  "categories": {
+    "Design Log": [
+      "welcome-to-the-grid",
+      "readable-interface-notes"
+    ]
+  },
+  "archiveByYear": {
+    "2026": [
+      "welcome-to-the-grid",
+      "readable-interface-notes"
+    ]
+  },
+  "archiveByMonth": {
+    "2026-06": [
+      "welcome-to-the-grid",
+      "readable-interface-notes"
+    ]
+  },
+  "posts": [
+    {
+      "slug": "readable-interface-notes",
+      "title": "Readable Interface Notes",
+      "excerpt": "Guidelines for keeping a boardroom-inspired interface comfortable for actual reading.",
+      "date": "2026-06-14",
+      "category": "Design Log",
+      "tags": [
+        "readability",
+        "design"
+      ],
+      "readTime": 1,
+      "wordCount": 75,
+      "featured": false,
+      "location": null
+    },
+    {
+      "slug": "welcome-to-the-grid",
+      "title": "Welcome to the Grid",
+      "excerpt": "A sample post showing readable ENCOM styling, wikilinks, callouts, and Obsidian image embeds.",
+      "date": "2026-06-15",
+      "category": "Design Log",
+      "tags": [
+        "interface",
+        "obsidian",
+        "notes"
+      ],
+      "readTime": 1,
+      "wordCount": 90,
+      "featured": true,
+      "location": null
+    }
+  ]
+}
