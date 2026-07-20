@@ -81840,13 +81840,36 @@ function parseUrlParams() {
 BlogController.routeFromUrl = function () {
   var params = parseUrlParams();
   if (params.post && state.postBySlug[params.post]) {
+    // Deep link to post or post-to-post navigation
+    var isNewPost = state.selectedSlug !== params.post;
     state.selectedSlug = params.post;
+    state.readerOpen = true;
     if (state.ready) {
-      BlogController.openPost(params.post);
+      if (isNewPost) {
+        emit("post-open", { slug: params.post, post: state.postBySlug[params.post] });
+        emit("reader-open", {});
+      }
+      // Don't call openPost from routeFromUrl to avoid duplicate history pushes
     }
   } else if (params.lens) {
+    // Navigation to lens: close reader if open
+    if (state.readerOpen) {
+      var closingSlug = state.selectedSlug;
+      state.selectedSlug = null;
+      state.readerOpen = false;
+      emit("post-close", { slug: closingSlug });
+      emit("reader-close", {});
+    }
     BlogController.setLens(params.lens, false);
   } else if (params.search) {
+    // Navigation to search: close reader if open
+    if (state.readerOpen) {
+      var closingSlug = state.selectedSlug;
+      state.selectedSlug = null;
+      state.readerOpen = false;
+      emit("post-close", { slug: closingSlug });
+      emit("reader-close", {});
+    }
     state.searchQuery = params.search;
     BlogController.setLens("search", false);
   }
@@ -81898,18 +81921,21 @@ BlogController.getVisiblePosts = function () {
       return new Date(a.date) - new Date(b.date); // chronological
     });
   }
-  if (state.lens === "topics" && state.filterTag) {
-    var slugs = (state.index.tags || {})[state.filterTag] || [];
-    return slugs.map(function (s) { return state.postBySlug[s]; }).filter(Boolean);
+  if (state.lens === "topics") {
+    var tag = state.filterTag;
+    if (!tag) return posts;
+    return posts.filter(function (p) { return (p.tags || []).indexOf(tag) >= 0; });
   }
-  if (state.lens === "search" && state.searchQuery) {
+  if (state.lens === "search") {
     var q = state.searchQuery.toLowerCase();
     return posts.filter(function (p) {
-      return (p.title || "").toLowerCase().indexOf(q) >= 0 ||
-        (p.excerpt || "").toLowerCase().indexOf(q) >= 0 ||
-        (p.tags || []).some(function (t) { return t.toLowerCase().indexOf(q) >= 0; }) ||
-        (p.category || "").toLowerCase().indexOf(q) >= 0;
+      return (p.title + " " + (p.excerpt || "") + " " + (p.tags || []).join(" ")).toLowerCase().indexOf(q) >= 0;
     });
+  }
+  if (state.lens === "year") {
+    var y = state.filterYear;
+    if (!y) return posts;
+    return posts.filter(function (p) { return String(new Date(p.date).getFullYear()) === y; });
   }
   return posts;
 };
@@ -81918,11 +81944,23 @@ BlogController.getVisiblePosts = function () {
 BlogController.openPost = function (slug) {
   var post = state.postBySlug[slug];
   if (!post) return;
+  // Prevent duplicate opens: if already open to this post, do nothing
+  if (state.selectedSlug === slug && state.readerOpen) return;
+  // Only capture scroll/focus on closed->open transition
+  var wasClosed = !state.readerOpen;
   state.selectedSlug = slug;
-  state.readerScrollY = window.scrollY;
-  state.readerFocusStack.push(document.activeElement);
+  state.readerOpen = true;
+  if (wasClosed) {
+    state.readerScrollY = window.scrollY;
+    state.readerFocusStack.push(document.activeElement);
+  }
   emit("post-open", { slug: slug, post: post });
-  pushUrl({ post: slug });
+  emit("reader-open", {}); // Signal for motion policy
+  // Only push history if not already at this URL (e.g., from deep link)
+  var params = parseUrlParams();
+  if (params.post !== slug) {
+    pushUrl({ post: slug });
+  }
   // The reader UI is rendered by the adapter; we just manage state + signals.
   // Focus management happens in the adapter's reader implementation.
 };
@@ -81931,7 +81969,9 @@ BlogController.closePost = function () {
   if (!state.selectedSlug) return;
   var slug = state.selectedSlug;
   state.selectedSlug = null;
+  state.readerOpen = false;
   emit("post-close", { slug: slug });
+  emit("reader-close", {}); // Signal for motion policy
   // Restore the lens URL.
   pushUrl({ lens: state.lens }, { replace: true });
   // Restore focus.
@@ -81944,6 +81984,7 @@ BlogController.closePost = function () {
 };
 
 BlogController.getSelectedSlug = function () { return state.selectedSlug; };
+BlogController.state = state; // Expose state for testing and authoritative readerOpen
 
 // ---- Search/filter -------------------------------------------------------
 BlogController.setSearch = function (query) {
@@ -81970,9 +82011,6 @@ BlogController.setFilterYear = function (year) {
 // ---- popstate: back/forward browser navigation ---------------------------
 BlogController.handlePopState = function () {
   BlogController.routeFromUrl();
-  if (!state.selectedSlug && state.readerOpen === false) {
-    emit("lens-change", { lens: state.lens });
-  }
 };
 
 // Install the popstate listener once.
@@ -82082,18 +82120,40 @@ function renderBlogInteractions() {
     }
 
     interactionContainer.empty();
+    var selectedSlug = window.BlogController ? BlogController.getSelectedSlug() : null;
     posts.forEach(function(post){
-        interactionContainer.append(
-            '<ul class="interaction-data blog-interaction" data-post-slug="' + escapeHtml(post.slug) + '">' +
-                '<li class="interaction-username">' + escapeHtml(post.category || "post") + '</li>' +
-                '<li class="interaction-title">' + escapeHtml(post.title) + '</li>' +
-                '<li class="interaction-type">' + escapeHtml((post.tags || []).join(", ")) + '</li>' +
-                '<li class="interaction-size">' + escapeHtml(post.readTime || "?") + 'm</li>' +
-                '<li class="interaction-popularity">' + (post.featured ? "featured" : "archive") + '</li>' +
-            '</ul>'
-        );
+        var label = [post.title, post.category, post.date, post.readTime, (post.tags || []).join(", ")].filter(Boolean).join(" — ");
+        var isSelected = post.slug === selectedSlug;
+        var row = $('<button type="button" class="interaction-data blog-interaction" data-post-slug="' + escapeHtml(post.slug) + '" tabindex="0" aria-label="' + escapeHtml(label) + '"' + (isSelected ? ' aria-current="true"' : '') + '>' +
+            '<span class="interaction-username">' + escapeHtml(post.category || "post") + '</span>' +
+            '<span class="interaction-title">' + escapeHtml(post.title) + '</span>' +
+            '<span class="interaction-type">' + escapeHtml((post.tags || []).join(", ")) + '</span>' +
+            '<span class="interaction-size">' + escapeHtml(post.readTime || "?") + 'm</span>' +
+            '<span class="interaction-popularity">' + (post.featured ? "featured" : "archive") + '</span>' +
+        '</button>');
+        
+        // Handle keyboard activation (Enter/Space)
+        row.on('keydown', function(event) {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                if (window.BlogController) {
+                    window.BlogController.openPost(post.slug);
+                }
+            }
+        });
+        
+        // Handle click activation
+        row.on('click', function() {
+            if (window.BlogController) {
+                window.BlogController.openPost(post.slug);
+            }
+        });
+        
+        interactionContainer.append(row);
     });
 }
+
+Boardroom.renderBlogInteractions = renderBlogInteractions;
 
 Boardroom.init = function(_streamType, data, _blogMode){
 
@@ -82348,9 +82408,11 @@ Boardroom.animate = function(){
         swirls.tick();
         updateSliders(animateTime);
     }
-
 };
 
+Boardroom.resetAnimationClock = function(){
+    lastTime = Date.now();
+};
 Boardroom.message = function(message){
 
     if(message.stream != streamType || !globe){
@@ -82369,23 +82431,56 @@ Boardroom.message = function(message){
     if(message.type && swirls){
         swirls.hit(message.type);
     }
-
-    changeBlinkies();
- 
+    
     if(interactionContainer && interactionContainer[0].lastChild){
         var lastChild = interactionContainer[0].lastChild;
         var slugAttr = message.slug ? ' data-post-slug="' + escapeHtml(message.slug) + '"' : '';
-        lastChild.innerHTML = '<li class="interaction-username">' + message.username + '</li>' + 
-            '<li class="interaction-title">' + message.title + '</li>' + 
-            '<li class="interaction-type">' + (message.type ? message.type : "") + '</li>' + 
-            '<li class="interaction-size">' + (message.size ? message.size : "") + '</li>' + 
-            '<li class="interaction-popularity">' + (message.popularity ? message.popularity : "")+ '</li>';
-        if (slugAttr) lastChild.setAttribute('data-post-slug', message.slug);
+        var ariaCurrentAttr = (message.slug && window.BlogController && BlogController.getSelectedSlug() === message.slug) ? ' aria-current="true"' : '';
+        var label = [message.title, message.category, message.date, message.readTime, (message.tags || []).join(", ")].filter(Boolean).join(" — ");
+        
+        // For blog streams, replace placeholder <ul> with semantic <button>
+        if (streamType === "blog") {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'interaction-data blog-interaction';
+            button.innerHTML = 
+              '<span class="interaction-username">' + escapeHtml(message.username || message.category || "post") + '</span>' +
+              '<span class="interaction-title">' + escapeHtml(message.title) + '</span>' +
+              '<span class="interaction-type">' + escapeHtml((message.tags || []).join(", ")) + '</span>' +
+              '<span class="interaction-size">' + escapeHtml(message.readTime || "?") + 'm</span>' +
+              '<span class="interaction-popularity">' + (message.popularity > 100 ? "featured" : "archive") + '</span>';
+            
+            if (slugAttr) button.setAttribute('data-post-slug', message.slug);
+            if (ariaCurrentAttr) button.setAttribute('aria-current', 'true');
+            button.setAttribute('aria-label', escapeHtml(label));
+            button.setAttribute('tabindex', '0');
+            
+            if(message.popularity > 100){
+              button.innerHTML = '<span class="interaction-popular">!</span>' + button.innerHTML;
+            }
+            
+            interactionContainer[0].replaceChild(button, lastChild);
+        } else {
+            // Non-blog streams: preserve original placeholder/list behavior
+            lastChild.innerHTML = 
+              '<span class="interaction-username">' + escapeHtml(message.username || message.category || "post") + '</span>' +
+              '<span class="interaction-title">' + escapeHtml(message.title) + '</span>' +
+              '<span class="interaction-type">' + escapeHtml((message.tags || []).join(", ")) + '</span>' +
+              '<span class="interaction-size">' + escapeHtml(message.readTime || "?") + 'm</span>' +
+              '<span class="interaction-popularity">' + (message.popularity > 100 ? "featured" : "archive") + '</span>';
+            
+            if (slugAttr) lastChild.setAttribute('data-post-slug', message.slug);
+            if (ariaCurrentAttr) lastChild.setAttribute('aria-current', 'true');
+            else lastChild.removeAttribute('aria-current');
+            lastChild.setAttribute('aria-label', escapeHtml(label));
+            lastChild.setAttribute('tabindex', '0');
+            lastChild.setAttribute('role', 'button');
 
-        if(message.popularity > 100){
-            lastChild.innerHTML = '<li class="interaction-popular">!</li>' + lastChild.innerHTML;
+            if(message.popularity > 100){
+              lastChild.innerHTML = '<span class="interaction-popular">!</span>' + lastChild.innerHTML;
+            }
         }
-
+        
         interactionContainer[0].insertBefore(interactionContainer[0].lastChild, interactionContainer[0].firstChild);
     }
 
@@ -82622,7 +82717,7 @@ function formatYTD(first, last){
 module.exports =  Boardroom;
 
 
-},{"./Box.js":33,"./LightTable.js":34,"./Logo.js":35,"./SatBar.js":36,"./SimpleClock.js":37,"./StockChart.js":38,"./StockChartSmall.js":39,"./Swirls.js":40,"./TimerTrees.js":41,"encom-globe":1,"jquery":16,"moment":20,"moment-timezone":17,"pusher.color":22}],33:[function(require,module,exports){
+},{"./Box.js":33,"./LightTable.js":34,"./Logo.js":35,"./SatBar.js":37,"./SimpleClock.js":38,"./StockChart.js":39,"./StockChartSmall.js":40,"./Swirls.js":41,"./TimerTrees.js":42,"encom-globe":1,"jquery":16,"moment":20,"moment-timezone":17,"pusher.color":22}],33:[function(require,module,exports){
 var THREE = require("three"),
     Utils = require("./Utils"),
     pushercolor = require("pusher.color");
@@ -83197,7 +83292,7 @@ Box.prototype.tick = function(){
 
 module.exports = Box;
 
-},{"./Utils":42,"pusher.color":22,"three":28}],34:[function(require,module,exports){
+},{"./Utils":43,"pusher.color":22,"three":28}],34:[function(require,module,exports){
 var $ = require("jquery"),
     THREE = require("three");
 
@@ -83311,8 +83406,15 @@ LightTable.show = function(cb){
     }
 
     $(document).keydown(function(event){
-
-        if(!event.ctrlKey && (event.which < 112 || event.which > 134) && event.which != 91) { // let them do f1-f12, windows key
+        // Exempt form inputs and contenteditable elements
+        var target = event.target;
+        var tagName = target.tagName.toLowerCase();
+        var isInput = tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable;
+        
+        // Exempt modifier shortcuts (ctrl, alt, meta)
+        var hasModifier = event.ctrlKey || event.altKey || event.metaKey;
+        
+        if (!hasModifier && !isInput && (event.which < 112 || event.which > 134) && event.which != 91) { // let them do f1-f12, windows key
             var keycode = event.which;
             event.preventDefault();
             keyClick(keycode);
@@ -83766,15 +83868,14 @@ function writeLs(exec){
     }
 
     $("#lt-command-lines").append(output);
-
 }
 
 
 /* I could make this much more involved, but i'm not really interested in spending time on this part of the app */
 /* sorry for disappointing anybody looking at this to see how much functionality there is */
 
-function executeCommand(){
-    var command = $(".command-text").last().text();
+function executeCommand(commandString){
+    var command = commandString || $(".command-text").last().text();
 
     if(command == "run blog.exe"){
         if(currentDir == "blog"){
@@ -84076,7 +84177,7 @@ function keyClick(keycode){
     writeKeyStroke(keycode);
 
 }
-
+LightTable.executeCommand = executeCommand;
 module.exports = LightTable;
 
 },{"jquery":16,"three":28}],35:[function(require,module,exports){
@@ -84134,7 +84235,246 @@ var Logo = function(containerId, text){
 
 module.exports = Logo;
 
-},{"./Utils.js":42}],36:[function(require,module,exports){
+},{"./Utils.js":43}],36:[function(require,module,exports){
+var MotionController = {};
+
+MotionController.create = function(deps) {
+  deps = deps || {};
+  
+  var document = deps.document || window.document;
+  var matchMedia = deps.matchMedia || window.matchMedia.bind(window);
+  var IntersectionObserver = deps.IntersectionObserver || window.IntersectionObserver;
+  var localStorage = deps.localStorage || window.localStorage;
+  var onResume = deps.onResume || null; // Callback for resume transitions
+  var injectToggle = deps.injectToggle !== false; // Default to true
+  
+  var REDUCED_EFFECTS_CADENCE = 250; // 4fps
+  var STORAGE_KEY = 'encom-reduced-effects';
+  
+  var state = {
+    documentHidden: document.hidden,
+    boardroomOffscreen: false,
+    readerOpen: false,
+    prefersReducedMotion: false,
+    reducedEffects: false
+  };
+  
+  var lastTickTime = 0;
+  var cleanupCallbacks = [];
+  
+  // Track previous blocked state to detect transitions
+  function isBlocked() {
+    return state.documentHidden || state.prefersReducedMotion || state.boardroomOffscreen || state.readerOpen;
+  }
+  
+  var wasBlocked = isBlocked();
+  
+  function checkResumeTransition() {
+    var nowBlocked = isBlocked();
+    if (wasBlocked && !nowBlocked && onResume) {
+      onResume();
+    }
+    wasBlocked = nowBlocked;
+  }
+  
+  // Load reduced-effects preference from localStorage
+  try {
+    var stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === 'true') {
+      state.reducedEffects = true;
+    }
+  } catch (e) {
+    // localStorage may not be available in all environments
+  }
+  
+  // Visibility API listener
+  var onVisibilityChange = function() {
+    state.documentHidden = document.hidden;
+    checkResumeTransition();
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  cleanupCallbacks.push(function() {
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+  });
+  
+  // prefers-reduced-motion media query listener
+  var reducedMotionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+  state.prefersReducedMotion = reducedMotionQuery.matches;
+  
+  var onReducedMotionChange = function(e) {
+    state.prefersReducedMotion = e.matches;
+    checkResumeTransition();
+  };
+  
+  if (reducedMotionQuery.addEventListener) {
+    reducedMotionQuery.addEventListener('change', onReducedMotionChange);
+    cleanupCallbacks.push(function() {
+      reducedMotionQuery.removeEventListener('change', onReducedMotionChange);
+    });
+  } else if (reducedMotionQuery.addListener) {
+    // Fallback for older browsers
+    reducedMotionQuery.addListener(onReducedMotionChange);
+    cleanupCallbacks.push(function() {
+      reducedMotionQuery.removeListener(onReducedMotionChange);
+    });
+  }
+  
+  // IntersectionObserver for boardroom offscreen detection
+  var intersectionObserver = null;
+  if (IntersectionObserver) {
+    var boardroomElement = deps.boardroomElement;
+    if (!boardroomElement && typeof document.getElementById === 'function') {
+      boardroomElement = document.getElementById('boardroom');
+    }
+    if (boardroomElement) {
+      intersectionObserver = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          state.boardroomOffscreen = !entry.isIntersecting;
+          checkResumeTransition();
+        });
+      }, { threshold: 0.1 });
+      
+      intersectionObserver.observe(boardroomElement);
+      cleanupCallbacks.push(function() {
+        intersectionObserver.disconnect();
+      });
+    }
+  }
+  
+  // Inject and manage toggle button
+  var toggleElement = null;
+  var toggleClickHandler = null;
+  
+  if (injectToggle) {
+    var globeFooter = typeof document.getElementById === 'function' ? document.getElementById('globe-footer') : null;
+    if (globeFooter) {
+      toggleElement = document.createElement('button');
+      toggleElement.id = 'reduced-effects-toggle';
+      toggleElement.setAttribute('aria-pressed', state.reducedEffects);
+      toggleElement.textContent = 'Reduced Effects';
+      
+      // Set initial body class
+      if (state.reducedEffects && document.body) {
+        document.body.classList.add('reduced-effects');
+      }
+      
+      toggleClickHandler = function() {
+        var currentState = state.reducedEffects;
+        var newState = !currentState;
+        policy.setReducedEffects(newState);
+        toggleElement.setAttribute('aria-pressed', newState);
+      };
+      
+      toggleElement.addEventListener('click', toggleClickHandler);
+      globeFooter.appendChild(toggleElement);
+      
+      cleanupCallbacks.push(function() {
+        if (toggleElement && toggleClickHandler) {
+          toggleElement.removeEventListener('click', toggleClickHandler);
+        }
+        if (toggleElement && toggleElement.parentNode) {
+          toggleElement.parentNode.removeChild(toggleElement);
+        }
+      });
+    }
+  }
+  
+  var policy = {
+    getState: function() {
+      return {
+        documentHidden: state.documentHidden,
+        boardroomOffscreen: state.boardroomOffscreen,
+        readerOpen: state.readerOpen,
+        prefersReducedMotion: state.prefersReducedMotion,
+        reducedEffects: state.reducedEffects
+      };
+    },
+    
+    shouldTick: function(view) {
+      // Both LightTable and Boardroom are gated through the policy
+      // Pause if document is hidden
+      if (state.documentHidden) {
+        return false;
+      }
+      
+      // Pause if prefers-reduced-motion
+      if (state.prefersReducedMotion) {
+        return false;
+      }
+      
+      // Boardroom-specific: pause if offscreen
+      if (view === 'boardroom' && state.boardroomOffscreen) {
+        return false;
+      }
+      
+      // Boardroom-specific: pause if reader is open
+      if (view === 'boardroom' && state.readerOpen) {
+        return false;
+      }
+      
+      // Throttle if reduced-effects mode is enabled
+      if (state.reducedEffects) {
+        var now = Date.now();
+        if (now - lastTickTime < REDUCED_EFFECTS_CADENCE) {
+          return false;
+        }
+        lastTickTime = now;
+      }
+      
+      return true;
+    },
+    
+    setReaderOpen: function(open) {
+      state.readerOpen = open;
+      checkResumeTransition();
+    },
+    
+    setReducedEffects: function(enabled) {
+      state.reducedEffects = enabled;
+      try {
+        localStorage.setItem(STORAGE_KEY, enabled ? 'true' : 'false');
+      } catch (e) {
+        // localStorage may not be available
+      }
+      
+      // Reset throttling clock when enabling to ensure first tick passes
+      if (enabled) {
+        lastTickTime = 0;
+      }
+      
+      // Update body class
+      if (document.body) {
+        if (enabled) {
+          document.body.classList.add('reduced-effects');
+        } else {
+          document.body.classList.remove('reduced-effects');
+        }
+      }
+      
+      // Sync toggle button if it exists
+      if (toggleElement) {
+        toggleElement.setAttribute('aria-pressed', enabled);
+      }
+    },
+    
+    resetAnimationClock: function() {
+      lastTickTime = Date.now();
+    },
+    
+    cleanup: function() {
+      cleanupCallbacks.forEach(function(fn) {
+        fn();
+      });
+      cleanupCallbacks = [];
+    }
+  };
+  
+  return policy;
+};
+
+module.exports = MotionController;
+
+},{}],37:[function(require,module,exports){
 var Utils = require("./Utils.js");
 
 var SatBar = function(canvasId){
@@ -84263,7 +84603,7 @@ function drawLines(context,x,width, percent){
 
 module.exports = SatBar;
 
-},{"./Utils.js":42}],37:[function(require,module,exports){
+},{"./Utils.js":43}],38:[function(require,module,exports){
 var Utils = require("./Utils");
 
 var SimpleClock = function(canvasId){
@@ -84337,7 +84677,7 @@ SimpleClock.prototype.tick = function(){
 
 module.exports = SimpleClock;
 
-},{"./Utils":42}],38:[function(require,module,exports){
+},{"./Utils":43}],39:[function(require,module,exports){
 var Utils = require("./Utils");
 
 var StockChart = function(containerId, opts){
@@ -84584,7 +84924,7 @@ function addGrid(ctx, ticks, width, height){
 
 module.exports = StockChart;
 
-},{"./Utils":42}],39:[function(require,module,exports){
+},{"./Utils":43}],40:[function(require,module,exports){
 var Utils = require("./Utils.js");
 
 var StockChartSmall = function(canvasId, opts){
@@ -84721,7 +85061,7 @@ var StockChartSmall = function(canvasId, opts){
 
 module.exports = StockChartSmall;
 
-},{"./Utils.js":42}],40:[function(require,module,exports){
+},{"./Utils.js":43}],41:[function(require,module,exports){
 var Utils = require("./Utils.js");
 
 var SwirlPoint = function(label, canvas){
@@ -84952,7 +85292,7 @@ Swirls.prototype.hit = function(label){
 
 module.exports = Swirls;
 
-},{"./Utils.js":42}],41:[function(require,module,exports){
+},{"./Utils.js":43}],42:[function(require,module,exports){
 var moment = require("moment");
 
 function drawTree(x,height){
@@ -85065,7 +85405,7 @@ var TimerTrees = function(canvasId){
 
 module.exports = TimerTrees;
 
-},{"moment":20}],42:[function(require,module,exports){
+},{"moment":20}],43:[function(require,module,exports){
 var Utils = {};
 
 Utils.renderToCanvas = function (width, height, renderFunction) {
@@ -85116,11 +85456,12 @@ Utils.drawCurvedRectangle = function(ctx, left, top, width, height, radius){
 
 module.exports = Utils;
 
-},{}],43:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 var $ = require("jquery"),
     EventSource = require("event-source"),
     Boardroom = require("./Boardroom.js"),
     BlogController = require("./BlogController.js"),
+    MotionController = require("./MotionController.js"),
     PleaseRotate = require("pleaserotate.js"),
     init = false;
 
@@ -85272,7 +85613,7 @@ PleaseRotate.start({onHide: function(){
 
         
         $("#error-message")
-           .css("visibility", "visible")
+           .css("visibility","visible")
            .center();
 
         console.log(ex);
@@ -85285,11 +85626,29 @@ PleaseRotate.start({onHide: function(){
     $("#boardroom").center();
     LightTable.show();
 
+    // Create motion policy with browser dependencies
+    var motionPolicy = MotionController.create({
+        document: window.document,
+        matchMedia: window.matchMedia.bind(window),
+        IntersectionObserver: window.IntersectionObserver,
+        localStorage: window.localStorage,
+        boardroomElement: document.getElementById('boardroom'),
+        onResume: Boardroom.resetAnimationClock
+    });
+    
+    // Connect BlogController reader signals to motion policy
+    BlogController.on('reader-open', function() {
+        motionPolicy.setReaderOpen(true);
+    });
+    BlogController.on('reader-close', function() {
+        motionPolicy.setReaderOpen(false);
+    });
+
     var animate = function(){
 
-        if(active === "lt"){
+        if(active === "lt" && motionPolicy.shouldTick('lighttable')) {
             LightTable.animate();
-        } else {
+        } else if (active === "br" && motionPolicy.shouldTick('boardroom')) {
             Boardroom.animate()
         }
 
@@ -85309,8 +85668,12 @@ PleaseRotate.start({onHide: function(){
     }
 
     window.addEventListener( 'resize', onWindowResize, false );
+    
+    // Wire policy cleanup on page lifecycle
+    window.addEventListener('pagehide', function() {
+        motionPolicy.cleanup();
+    });
 
 }});
 
-
-},{"./BlogController.js":31,"./Boardroom.js":32,"event-source":9,"jquery":16,"jquery-ui":15,"pleaserotate.js":21}]},{},[43])
+},{"./BlogController.js":31,"./Boardroom.js":32,"./MotionController.js":36,"event-source":9,"jquery":16,"jquery-ui":15,"pleaserotate.js":21}]},{},[44])

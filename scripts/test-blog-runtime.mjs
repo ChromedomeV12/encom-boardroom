@@ -19,6 +19,9 @@ const index = await read('index.html');
 const adapter = await read('js/blog-adapter.js');
 const blogCss = await read('css/blog.css');
 
+assert.doesNotThrow(() => new Function(boardroom), 'Boardroom source should parse');
+assert.doesNotThrow(() => new Function(lightTable), 'LightTable source should parse');
+
 assert.match(lightTable, /simulateCommand\("\|cd blog\$"\)/, 'featured folder should type cd blog');
 assert.match(lightTable, /simulateCommand\("run blog\.exe\$"\)/, 'featured folder should type run blog.exe');
 assert.match(lightTable, /BLOG_LAUNCH_MODE = "featured"/, 'featured folder should set featured mode');

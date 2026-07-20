@@ -573,6 +573,7 @@ function writeLs(exec){
     }
 
     $("#lt-command-lines").append(output);
+}
 
 
 /* I could make this much more involved, but i'm not really interested in spending time on this part of the app */

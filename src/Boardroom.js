@@ -383,6 +383,7 @@ Boardroom.animate = function(){
         swirls.tick();
         updateSliders(animateTime);
     }
+};
 
 Boardroom.resetAnimationClock = function(){
     lastTime = Date.now();
