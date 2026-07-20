@@ -95,9 +95,11 @@ function renderBlogInteractions() {
     }
 
     interactionContainer.empty();
+    var selectedSlug = window.BlogController ? BlogController.getSelectedSlug() : null;
     posts.forEach(function(post){
         var label = [post.title, post.category, post.date, post.readTime, (post.tags || []).join(", ")].filter(Boolean).join(" — ");
-        var row = $('<button type="button" class="interaction-data blog-interaction" data-post-slug="' + escapeHtml(post.slug) + '" tabindex="0" aria-label="' + escapeHtml(label) + '">' +
+        var isSelected = post.slug === selectedSlug;
+        var row = $('<button type="button" class="interaction-data blog-interaction" data-post-slug="' + escapeHtml(post.slug) + '" tabindex="0" aria-label="' + escapeHtml(label) + '"' + (isSelected ? ' aria-current="true"' : '') + '>' +
             '<span class="interaction-username">' + escapeHtml(post.category || "post") + '</span>' +
             '<span class="interaction-title">' + escapeHtml(post.title) + '</span>' +
             '<span class="interaction-type">' + escapeHtml((post.tags || []).join(", ")) + '</span>' +
@@ -125,6 +127,8 @@ function renderBlogInteractions() {
         interactionContainer.append(row);
     });
 }
+
+Boardroom.renderBlogInteractions = renderBlogInteractions;
 
 Boardroom.init = function(_streamType, data, _blogMode){
 
@@ -380,12 +384,9 @@ Boardroom.animate = function(){
         updateSliders(animateTime);
     }
 
-};
-
 Boardroom.resetAnimationClock = function(){
     lastTime = Date.now();
 };
-
 Boardroom.message = function(message){
 
     if(message.stream != streamType || !globe){
@@ -410,15 +411,27 @@ Boardroom.message = function(message){
     if(interactionContainer && interactionContainer[0].lastChild){
         var lastChild = interactionContainer[0].lastChild;
         var slugAttr = message.slug ? ' data-post-slug="' + escapeHtml(message.slug) + '"' : '';
-        lastChild.innerHTML = '<li class="interaction-username">' + message.username + '</li>' + 
-            '<li class="interaction-title">' + message.title + '</li>' + 
-            '<li class="interaction-type">' + (message.type ? message.type : "") + '</li>' + 
-            '<li class="interaction-size">' + (message.size ? message.size : "") + '</li>' + 
-            '<li class="interaction-popularity">' + (message.popularity ? message.popularity : "")+ '</li>';
+        var ariaCurrentAttr = (message.slug && window.BlogController && BlogController.getSelectedSlug() === message.slug) ? ' aria-current="true"' : '';
+        var label = [message.title, message.category, message.date, message.readTime, (message.tags || []).join(", ")].filter(Boolean).join(" — ");
+        
+        // Preserve semantic button markup with proper attributes
+        lastChild.innerHTML = 
+            '<span class="interaction-username">' + escapeHtml(message.username || message.category || "post") + '</span>' +
+            '<span class="interaction-title">' + escapeHtml(message.title) + '</span>' +
+            '<span class="interaction-type">' + escapeHtml((message.tags || []).join(", ")) + '</span>' +
+            '<span class="interaction-size">' + escapeHtml(message.readTime || "?") + 'm</span>' +
+            '<span class="interaction-popularity">' + (message.popularity > 100 ? "featured" : "archive") + '</span>';
+        
+        // Ensure the button has proper attributes
         if (slugAttr) lastChild.setAttribute('data-post-slug', message.slug);
+        if (ariaCurrentAttr) lastChild.setAttribute('aria-current', 'true');
+        else lastChild.removeAttribute('aria-current');
+        lastChild.setAttribute('aria-label', escapeHtml(label));
+        lastChild.setAttribute('tabindex', '0');
+        lastChild.setAttribute('role', 'button');
 
         if(message.popularity > 100){
-            lastChild.innerHTML = '<li class="interaction-popular">!</li>' + lastChild.innerHTML;
+            lastChild.innerHTML = '<span class="interaction-popular">!</span>' + lastChild.innerHTML;
         }
 
         interactionContainer[0].insertBefore(interactionContainer[0].lastChild, interactionContainer[0].firstChild);

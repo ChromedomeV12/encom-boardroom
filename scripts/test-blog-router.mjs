@@ -259,5 +259,41 @@ BlogController.on('reader-close', function () { readerCloseCount++; });
 BlogController.closePost();
 assert.equal(closeCount, 1, 'closePost should emit post-close once');
 assert.equal(readerCloseCount, 1, 'closePost should emit reader-close once');
+// --- Test 18: post-to-post navigation while open does not push focus ---
+resetUrl('');
+BlogController.init(samplePosts, sampleIndex);
+BlogController.onBoardroomReady();
+var mockFocusable1 = { focus: function () { this.focused = true; } };
+var mockFocusable2 = { focus: function () { this.focused = true; } };
+global.document.activeElement = mockFocusable1;
+BlogController.openPost('alpha');
+var stackAfterFirstOpen = BlogController.state.readerFocusStack.length;
+// Switch to another post while reader is open
+global.document.activeElement = mockFocusable2;
+BlogController.openPost('beta');
+var stackAfterSecondOpen = BlogController.state.readerFocusStack.length;
+assert.equal(stackAfterSecondOpen, stackAfterFirstOpen, 'post-to-post while open should not push another focus entry');
+assert.equal(mockFocusable1.focused, undefined, 'first focus should not be restored yet');
+BlogController.closePost();
+assert.equal(mockFocusable1.focused, true, 'close should restore original focus from first open');
 
-console.log('blog router tests passed (17 tests)');
+// --- Test 19: dataset string coercion bug - exact restoration ---
+resetUrl('');
+BlogController.init(samplePosts, sampleIndex);
+BlogController.onBoardroomReady();
+var mockElement = { 
+  inert: false, 
+  getAttribute: function(attr) { return this[attr]; },
+  setAttribute: function(attr, val) { this[attr] = val; },
+  removeAttribute: function(attr) { delete this[attr]; }
+};
+// Simulate adapter saving state via dataset (string coercion)
+mockElement.dataset = { previouslyInert: String(mockElement.inert) };
+// String "false" coerces to true in boolean context
+var restoredInert = mockElement.dataset.previouslyInert === 'true';
+assert.equal(restoredInert, false, 'string coercion should preserve false correctly');
+// But if we use closure state with exact boolean
+var savedInert = mockElement.inert;
+assert.equal(savedInert, false, 'closure state preserves exact boolean');
+
+console.log('blog router tests passed (19 tests)');

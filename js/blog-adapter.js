@@ -22,7 +22,14 @@
   posts.forEach(function (post) { postBySlug[post.slug] = post; });
 
   var readerInstalled = false;
-  var lastFocusedBeforeReader = null;
+  // Closure state for exact restoration (no dataset string coercion)
+  var lightTable = null;
+  var boardroom = null;
+  var savedLightTableInert = null;
+  var savedBoardroomInert = null;
+  var savedLightTableAriaHidden = null;
+  var savedBoardroomAriaHidden = null;
+  var savedBodyOverflow = null;
 
   function escapeHtml(value) {
     return String(value || '').replace(/[&<>"']/g, function (char) {
@@ -156,7 +163,27 @@
       return p ? { slug: s, title: p.title } : null;
     }).filter(Boolean);
 
-    lastFocusedBeforeReader = document.activeElement;
+    // Only capture background state on first open (closed->open transition)
+    var isFirstOpen = !lightTable;
+    if (isFirstOpen) {
+      lightTable = document.querySelector('#light-table');
+      boardroom = document.querySelector('#boardroom');
+      savedBodyOverflow = document.body.style.overflow;
+      if (lightTable) {
+        savedLightTableInert = lightTable.inert;
+        savedLightTableAriaHidden = lightTable.getAttribute('aria-hidden');
+        lightTable.inert = true;
+        lightTable.setAttribute('aria-hidden', 'true');
+      }
+      if (boardroom) {
+        savedBoardroomInert = boardroom.inert;
+        savedBoardroomAriaHidden = boardroom.getAttribute('aria-hidden');
+        boardroom.inert = true;
+        boardroom.setAttribute('aria-hidden', 'true');
+      }
+      document.body.style.overflow = 'hidden';
+    }
+
     reader.querySelector('.blog-reader-title').textContent = post.title;
     reader.querySelector('.blog-reader-meta').textContent =
       post.category + ' // ' + post.readTime + ' MIN READ // ' + post.date;
@@ -167,25 +194,7 @@
       renderLinkSection('LINKED FROM', backlinks) +
       (related.length ? renderLinkSection('RELATED', related) : '');
     reader.classList.add('is-open');
-    
-    // Set background surfaces inert and aria-hidden
-    var lightTable = document.querySelector('#light-table');
-    var boardroom = document.querySelector('#boardroom');
-    if (lightTable) {
-      lightTable.dataset.previouslyInert = lightTable.inert;
-      lightTable.dataset.previouslyAriaHidden = lightTable.getAttribute('aria-hidden');
-      lightTable.inert = true;
-      lightTable.setAttribute('aria-hidden', 'true');
-    }
-    if (boardroom) {
-      boardroom.dataset.previouslyInert = boardroom.inert;
-      boardroom.dataset.previouslyAriaHidden = boardroom.getAttribute('aria-hidden');
-      boardroom.inert = true;
-      boardroom.setAttribute('aria-hidden', 'true');
-    }
-    
-    // Lock body scroll.
-    document.body.style.overflow = 'hidden';
+
     // Move focus into the reader.
     var closeBtn = reader.querySelector('.blog-reader-close');
     if (closeBtn) closeBtn.focus();
@@ -195,34 +204,36 @@
     var reader = document.querySelector('#blog-reader');
     if (reader) reader.classList.remove('is-open');
     
-    // Restore background surfaces inert and aria-hidden
-    var lightTable = document.querySelector('#light-table');
-    var boardroom = document.querySelector('#boardroom');
+    // Restore background surfaces inert and aria-hidden using closure state
     if (lightTable) {
-      lightTable.inert = lightTable.dataset.previouslyInert === 'true';
-      if (lightTable.dataset.previouslyAriaHidden !== undefined) {
-        lightTable.setAttribute('aria-hidden', lightTable.dataset.previouslyAriaHidden);
+      lightTable.inert = savedLightTableInert;
+      if (savedLightTableAriaHidden !== null) {
+        lightTable.setAttribute('aria-hidden', savedLightTableAriaHidden);
       } else {
         lightTable.removeAttribute('aria-hidden');
       }
-      delete lightTable.dataset.previouslyInert;
-      delete lightTable.dataset.previouslyAriaHidden;
     }
     if (boardroom) {
-      boardroom.inert = boardroom.dataset.previouslyInert === 'true';
-      if (boardroom.dataset.previouslyAriaHidden !== undefined) {
-        boardroom.setAttribute('aria-hidden', boardroom.dataset.previouslyAriaHidden);
+      boardroom.inert = savedBoardroomInert;
+      if (savedBoardroomAriaHidden !== null) {
+        boardroom.setAttribute('aria-hidden', savedBoardroomAriaHidden);
       } else {
         boardroom.removeAttribute('aria-hidden');
       }
-      delete boardroom.dataset.previouslyInert;
-      delete boardroom.dataset.previouslyAriaHidden;
     }
     
-    document.body.style.overflow = '';
-    if (lastFocusedBeforeReader && typeof lastFocusedBeforeReader.focus === 'function') {
-      try { lastFocusedBeforeReader.focus(); } catch (e) { /* swallow */ }
-    }
+    // Restore body overflow
+    document.body.style.overflow = savedBodyOverflow;
+    
+    // Clear closure state
+    lightTable = null;
+    boardroom = null;
+    savedLightTableInert = null;
+    savedBoardroomInert = null;
+    savedLightTableAriaHidden = null;
+    savedBoardroomAriaHidden = null;
+    savedBodyOverflow = null;
+    // Focus restoration is handled by BlogController.closePost via readerFocusStack
   }
 
   // ---- Light-table + boardroom label swaps ------------------------------
@@ -335,8 +346,28 @@
     ctrl.on('post-close', function () {
       closeReaderLocal();
     });
+    // Rerender post rows on lens/filter changes
+    ctrl.on('lens-change', function () {
+      if (window.Boardroom && window.Boardroom.renderBlogInteractions) {
+        window.Boardroom.renderBlogInteractions();
+      }
+    });
+    ctrl.on('search', function () {
+      if (window.Boardroom && window.Boardroom.renderBlogInteractions) {
+        window.Boardroom.renderBlogInteractions();
+      }
+    });
+    ctrl.on('filter-tag', function () {
+      if (window.Boardroom && window.Boardroom.renderBlogInteractions) {
+        window.Boardroom.renderBlogInteractions();
+      }
+    });
+    ctrl.on('filter-year', function () {
+      if (window.Boardroom && window.Boardroom.renderBlogInteractions) {
+        window.Boardroom.renderBlogInteractions();
+      }
+    });
   }
-
   // ---- Boot: single call, no retry cascade ------------------------------
   function boot() {
     document.body.classList.add('blog-flex');

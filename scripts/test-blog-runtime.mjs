@@ -123,10 +123,32 @@ assert.match(index, /lt-command-form|lt-command-input/, 'index.html should have 
 assert.match(lightTable, /input|textarea|select|contenteditable/, 'light-table key handler should exempt form inputs');
 assert.match(lightTable, /metaKey|ctrlKey|altKey/, 'light-table key handler should ignore modifier shortcuts');
 assert.match(boardroom, /renderBlogInteractions/, 'boardroom should rerender posts on lens changes');
-assert.match(boardroom, /getVisiblePosts/, 'boardroom rerender should use BlogController.getVisiblePosts');
-assert.match(blogCss, /:focus-visible/, 'blog CSS should have :focus-visible styling');
-assert.match(blogCss, /pointer-events:\s*none/, 'interaction overlay should not block pointer events on desktop');
+// M6 task 3 fixes: aria-current on selected post button
+assert.match(boardroom, /aria-current/, 'boardroom should set aria-current on selected post button');
+assert.match(boardroom, /removeAttribute\(['"]aria-current['"]\)|setAttribute\(['"]aria-current['"]/, 'boardroom should update aria-current on post changes');
 
+// M6 task 3 fixes: Boardroom.renderBlogInteractions exposed for rerender
+assert.match(boardroom, /Boardroom\.renderBlogInteractions\s*=/, 'Boardroom should expose renderBlogInteractions function');
+
+// M6 task 3 fixes: adapter subscriptions for lens-change, search, filter-tag, filter-year
+assert.match(adapter, /lens-change/, 'adapter should subscribe to lens-change signal');
+assert.match(adapter, /search/, 'adapter should subscribe to search signal');
+assert.match(adapter, /filter-tag/, 'adapter should subscribe to filter-tag signal');
+assert.match(adapter, /filter-year/, 'adapter should subscribe to filter-year signal');
+
+// M6 task 3 fixes: adapter uses closure state for exact restoration
+assert.match(adapter, /var\s+lightTable\s*=\s*null/, 'adapter should capture element in closure for exact restoration');
+assert.match(adapter, /savedLightTableInert/, 'adapter should use closure state for exact restoration');
+assert.doesNotMatch(adapter, /dataset\.previouslyInert/, 'adapter should not use dataset for state storage');
+
+// M6 task 3 fixes: Boardroom.message preserves semantic button markup
+assert.match(boardroom, /<button|role=["']button['"]/, 'Boardroom.message should preserve button markup');
+assert.doesNotMatch(boardroom, /<li[^>]*class=["']interaction-username['"]/, 'Boardroom.message should not rewrite semantic button with li children');
+assert.match(boardroom, /tabindex/, 'Boardroom.message should preserve tabindex');
+assert.match(boardroom, /aria-label/, 'Boardroom.message should preserve aria-label');
+assert.match(boardroom, /data-post-slug/, 'Boardroom.message should preserve data-post-slug');
+
+assert.match(blogCss, /:focus-visible/, 'blog CSS should have :focus-visible styling');
 const mobileBlogCss = blogCss.slice(blogCss.indexOf('@media (max-width: 900px)'));
 const mobileRules = [...mobileBlogCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
 

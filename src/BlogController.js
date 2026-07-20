@@ -256,10 +256,14 @@ BlogController.openPost = function (slug) {
   if (!post) return;
   // Prevent duplicate opens: if already open to this post, do nothing
   if (state.selectedSlug === slug && state.readerOpen) return;
+  // Only capture scroll/focus on closed->open transition
+  var wasClosed = !state.readerOpen;
   state.selectedSlug = slug;
   state.readerOpen = true;
-  state.readerScrollY = window.scrollY;
-  state.readerFocusStack.push(document.activeElement);
+  if (wasClosed) {
+    state.readerScrollY = window.scrollY;
+    state.readerFocusStack.push(document.activeElement);
+  }
   emit("post-open", { slug: slug, post: post });
   emit("reader-open", {}); // Signal for motion policy
   // Only push history if not already at this URL (e.g., from deep link)
