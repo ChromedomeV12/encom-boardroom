@@ -87,6 +87,8 @@ assert.match(controller, /pushState/, 'controller should use history pushState f
 assert.match(controller, /popstate/, 'controller should handle popstate for back/forward');
 assert.match(controller, /onBoardroomReady/, 'controller should expose a boardroom-ready lifecycle event');
 assert.match(controller, /openPost/, 'controller should expose openPost');
+assert.match(controller, /loadPost/, 'controller should expose lazy post loading');
+assert.match(controller, /payloadRequests/, 'controller should de-duplicate in-flight post payloads');
 assert.match(controller, /closePost/, 'controller should expose closePost');
 assert.match(controller, /getVisiblePosts/, 'controller should expose getVisiblePosts for the current lens');
 assert.match(controller, /archive-signal/, 'controller should emit archive signals');
@@ -138,8 +140,68 @@ assert.doesNotMatch(
 );
 assert.match(
   adapter,
-  /canonicalLink[\s\S]{0,240}canonicalMatch/,
+  /canonicalLink[\s\S]{0,320}parseCanonicalPostLink/,
   'runtime reader should intercept canonical cross-post article links',
+);
+assert.match(adapter, /function deploymentBasePath\(/, 'runtime should derive the boardroom deployment path');
+assert.match(adapter, /rebaseReaderHtml\(post\.html\)/, 'reader HTML should be rebased for project-site paths');
+assert.match(
+  adapter,
+  /deploymentPath\(['"]posts\/['"]\)/,
+  'canonical post interception should retain the deployment pathname'
+);
+const deploymentHelpersSource = adapter.slice(
+  adapter.indexOf('  function deploymentBasePath'),
+  adapter.indexOf('  function renderLinkSection'),
+);
+function loadDeploymentHelpers(pathname) {
+  const runtimeWindow = {
+    location: {
+      pathname,
+      href: `https://chromedomev12.github.io${pathname}`,
+      host: 'chromedomev12.github.io',
+    },
+  };
+  const runtimeDocument = {
+    createElement() {
+      const anchor = {};
+      Object.defineProperty(anchor, 'href', {
+        set(value) {
+          const parsed = new URL(value, runtimeWindow.location.href);
+          anchor.host = parsed.host;
+          anchor.pathname = parsed.pathname;
+          anchor.hash = parsed.hash;
+        },
+      });
+      return anchor;
+    },
+  };
+  return new Function(
+    'window',
+    'document',
+    `${deploymentHelpersSource}\nreturn { deploymentPath, rebaseReaderHtml, parseCanonicalPostLink };`,
+  )(runtimeWindow, runtimeDocument);
+}
+
+const projectHelpers = loadDeploymentHelpers('/encom-boardroom/');
+assert.equal(projectHelpers.deploymentPath('blog-data/posts/a.json'), '/encom-boardroom/blog-data/posts/a.json');
+assert.equal(
+  projectHelpers.rebaseReaderHtml('<a href="/posts/a/"><img src="/blog-assets/a.png"></a>'),
+  '<a href="/encom-boardroom/posts/a/"><img src="/encom-boardroom/blog-assets/a.png"></a>',
+  'reader-generated post and asset paths should retain the project pathname',
+);
+assert.deepEqual(
+  projectHelpers.parseCanonicalPostLink({
+    getAttribute() { return '/encom-boardroom/posts/caf%C3%A9/#heading'; },
+  }),
+  { slug: 'café', heading: 'heading' },
+  'project-path canonical links should still route inside the reader',
+);
+const rootHelpers = loadDeploymentHelpers('/');
+assert.equal(
+  rootHelpers.rebaseReaderHtml('<a href="/posts/a/">A</a>'),
+  '<a href="/posts/a/">A</a>',
+  'local root reader paths should remain root-relative',
 );
 assert.match(adapter, /event\.button\s*===\s*0/, 'canonical links should require primary clicks');
 assert.match(adapter, /event\.defaultPrevented/, 'canonical links should respect prior preventDefault');
@@ -185,10 +247,58 @@ assert.match(adapter, /savedLightTableInert/, 'adapter should use closure state 
 assert.doesNotMatch(adapter, /dataset\.previouslyInert/, 'adapter should not use dataset for state storage');
 
 // M6 task 3 fixes: focusin containment listener for programmatic focus escape
-assert.match(adapter, /focusin/, 'adapter should install focusin containment listener');
-assert.match(adapter, /reader\.contains\(|!reader\.contains\(/, 'adapter should check if focus is outside reader');
-assert.match(adapter, /preventDefault\(\)|stopPropagation\(\)/, 'adapter should prevent default focus behavior when redirecting');
-assert.match(adapter, /closeBtn|focusable\[0\]/, 'adapter should redirect to close button or first focusable');
+assert.match(
+  adapter,
+  /document\.addEventListener\(['"]focusin['"],\s*readerFocusContainmentHandler,\s*true\)/,
+  'adapter should capture focus escapes at document scope',
+);
+assert.match(adapter, /var readerFocusContainmentHandler = null/, 'adapter should retain one containment handler');
+assert.match(
+  adapter,
+  /if \(!readerFocusContainmentHandler\)/,
+  'adapter should not register duplicate containment listeners',
+);
+
+const focusContainmentSource = adapter.slice(
+  adapter.indexOf('  function containReaderFocus'),
+  adapter.indexOf('  function installReader'),
+);
+const containReaderFocus = new Function(`${focusContainmentSource}\nreturn containReaderFocus;`)();
+const insideTarget = {};
+const outsideTarget = {};
+let fallbackFocusCount = 0;
+const fallbackFocusTarget = { focus() { fallbackFocusCount += 1; } };
+let readerOpen = true;
+const focusReader = {
+  classList: { contains(name) { return name === 'is-open' && readerOpen; } },
+  contains(target) { return target === insideTarget || target === fallbackFocusTarget; },
+  querySelector(selector) { return selector === '.blog-reader-close' ? fallbackFocusTarget : null; },
+  querySelectorAll() { return [fallbackFocusTarget]; },
+};
+
+let prevented = 0;
+let stopped = 0;
+const escapedFocusEvent = {
+  target: outsideTarget,
+  preventDefault() { prevented += 1; },
+  stopPropagation() { stopped += 1; },
+};
+assert.equal(containReaderFocus(focusReader, escapedFocusEvent), true, 'escaped focus should be intercepted');
+assert.equal(prevented, 1, 'escaped focus should be cancelled');
+assert.equal(stopped, 1, 'escaped focus should not propagate into the inert background');
+assert.equal(fallbackFocusCount, 1, 'escaped focus should return to the reader close control');
+
+const containedFocusEvent = {
+  target: insideTarget,
+  preventDefault() { assert.fail('contained focus must not be cancelled'); },
+  stopPropagation() { assert.fail('contained focus must not be stopped'); },
+};
+assert.equal(containReaderFocus(focusReader, containedFocusEvent), false, 'focus inside the reader should remain untouched');
+assert.equal(fallbackFocusCount, 1, 'contained focus should not be redirected');
+
+readerOpen = false;
+assert.equal(containReaderFocus(focusReader, escapedFocusEvent), false, 'closed reader should not contain page focus');
+assert.equal(fallbackFocusCount, 1, 'closed reader should not redirect page focus');
 // M6 task 3 fixes: Boardroom.message preserves semantic buttons in blog streams
 assert.match(boardroom, /createElement.*button/, 'Boardroom.message should create button elements for blog streams');
 assert.match(boardroom, /replaceChild.*button.*lastChild/, 'Boardroom.message should replace placeholder with button for blog streams');

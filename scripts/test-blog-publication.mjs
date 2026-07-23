@@ -20,10 +20,16 @@ async function writePost(root, filename, source) {
   await writeFile(filePath, source.trimStart(), 'utf8');
 }
 
-async function runPublish(root) {
+async function writeFileRaw(root, relativePath, content) {
+  const filePath = path.join(root, relativePath);
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, content, 'utf8');
+}
+
+async function runPublish(root, siteUrl = 'https://archive.example.com') {
   const outDir = path.join(root, 'dist');
   await execFileAsync(process.execPath, [
-    publishScript, `--site-url=https://archive.example.com`, `--out=${outDir}`
+    publishScript, `--site-url=${siteUrl}`, `--out=${outDir}`
   ], { cwd: root });
   return outDir;
 }
@@ -38,6 +44,36 @@ async function readDir(dir) {
     else results.push(full);
   }
   return results;
+}
+
+function toPosixRelative(root, filePath) {
+  return path.relative(root, filePath).split(path.sep).join('/');
+}
+
+async function testSiteUrlRequired() {
+  const root = await fixtureRoot('site-url-required');
+  await assert.rejects(
+    execFileAsync(process.execPath, [publishScript, `--out=${path.join(root, 'dist')}`], {
+      cwd: root,
+      env: { ...process.env, BLOG_SITE_URL: '' }
+    }),
+    /A canonical site URL is required/
+  );
+}
+
+async function testRootMetadataKeepsOwnershipSeparateFromAttribution() {
+  const html = await readFile(path.join(repoRoot, 'index.html'), 'utf8');
+  assert.match(html, /<link rel="canonical" href="\.\/"\s*\/>/);
+  assert.doesNotMatch(
+    html,
+    /<link rel="canonical"[^>]+(?:robscanlon\.com|github\.com\/arscan)/i,
+    'the personal deployment must not claim an upstream URL as canonical'
+  );
+  assert.match(
+    html,
+    /This was created by <a href="https:\/\/twitter\.com\/arscan"/,
+    'upstream attribution remains visible separately from canonical ownership'
+  );
 }
 
 // --- Test 1: Canonical article pages are generated and JS-free -----------
@@ -171,25 +207,33 @@ async function testDiscoveryPagesGenerated() {
   await writePost(root, 'b.md', `---\ntitle: Post B\ndate: 2025-06-15\ntags: [beta]\ncategory: Notes\n---\nBody B.`);
   const outDir = await runPublish(root);
   const allFiles = await readDir(outDir);
+  const relativeFiles = allFiles.map((filePath) => toPosixRelative(outDir, filePath));
 
   // Tag pages
-  assert.ok(allFiles.some((f) => f.includes('tags/alpha/index.html')), 'alpha tag page exists');
-  assert.ok(allFiles.some((f) => f.includes('tags/beta/index.html')), 'beta tag page exists');
+  assert.ok(relativeFiles.includes('tags/alpha/index.html'), 'alpha tag page exists');
+  assert.ok(relativeFiles.includes('tags/beta/index.html'), 'beta tag page exists');
   const alphaTag = await readFile(path.join(outDir, 'tags', 'alpha', 'index.html'), 'utf8');
   assert.match(alphaTag, /Tag: alpha/);
   assert.match(alphaTag, /Post A/);
+  assert.match(alphaTag, /<link rel="canonical" href="https:\/\/archive\.example\.com\/tags\/alpha\/">/);
 
   // Category pages
-  assert.ok(allFiles.some((f) => f.includes('categories/dispatches/index.html')), 'dispatches category page exists');
+  assert.ok(relativeFiles.includes('categories/dispatches/index.html'), 'dispatches category page exists');
   const dispatches = await readFile(path.join(outDir, 'categories', 'dispatches', 'index.html'), 'utf8');
   assert.match(dispatches, /Post A/);
+  assert.match(dispatches, /<link rel="canonical" href="https:\/\/archive\.example\.com\/categories\/dispatches\/">/);
 
   // Archive year pages
-  assert.ok(allFiles.some((f) => f.includes('archive/2026/index.html')), '2026 archive page exists');
-  assert.ok(allFiles.some((f) => f.includes('archive/2025/index.html')), '2025 archive page exists');
+  assert.ok(relativeFiles.includes('archive/2026/index.html'), '2026 archive page exists');
+  assert.ok(relativeFiles.includes('archive/2025/index.html'), '2025 archive page exists');
   const archiveIndex = await readFile(path.join(outDir, 'archive', 'index.html'), 'utf8');
   assert.match(archiveIndex, /2026/);
   assert.match(archiveIndex, /2025/);
+  assert.match(archiveIndex, /<link rel="canonical" href="https:\/\/archive\.example\.com\/archive\/">/);
+  const featured = await readFile(path.join(outDir, 'featured', 'index.html'), 'utf8');
+  assert.match(featured, /<link rel="canonical" href="https:\/\/archive\.example\.com\/featured\/">/);
+  const landing = await readFile(path.join(outDir, 'index.html'), 'utf8');
+  assert.match(landing, /<link rel="canonical" href="https:\/\/archive\.example\.com\/">/);
 }
 
 // --- Test 5: Manifest is valid JSON with discovery data ------------------
@@ -242,6 +286,57 @@ Paragraph with **bold** and *italic* and \`code\`.
   assert.doesNotMatch(html, /<script\s+src=/i);
 }
 
+// --- Test 10: Project-site publication retains the configured pathname ---
+async function testProjectSubpathLinks() {
+  const root = await fixtureRoot('project-subpath');
+  await writeFileRaw(root, 'content/obsidian/attachments/panel.svg', '<svg />');
+  await writePost(root, 'alpha.md', `---
+title: Alpha Signal
+date: 2026-06-15
+tags: [alpha]
+category: Dispatches
+featured: true
+---
+Links to [[Beta Signal]] and embeds ![[attachments/panel.svg]].`);
+  await writePost(root, 'beta.md', `---
+title: Beta Signal
+date: 2025-06-14
+category: Notes
+---
+Beta body.`);
+
+  const siteUrl = 'https://chromedomev12.github.io/encom-boardroom/';
+  const outDir = await runPublish(root, siteUrl);
+  const alpha = await readFile(path.join(outDir, 'posts', 'alpha-signal', 'index.html'), 'utf8');
+  const landing = await readFile(path.join(outDir, 'index.html'), 'utf8');
+  const archive = await readFile(path.join(outDir, 'archive', 'index.html'), 'utf8');
+  const rss = await readFile(path.join(outDir, 'rss.xml'), 'utf8');
+  const sitemap = await readFile(path.join(outDir, 'sitemap.xml'), 'utf8');
+
+  assert.match(alpha, /href="\/encom-boardroom\/posts\/beta-signal\/"/,
+    'article and related links should retain the project path');
+  assert.match(alpha, /src="\/encom-boardroom\/blog-assets\/attachments\/panel\.svg"/,
+    'article assets should retain the project path');
+  assert.match(alpha, /href="\/encom-boardroom\/\?post=alpha-signal"/,
+    'boardroom links should return to the project root');
+  assert.match(alpha, /href="\/encom-boardroom\/">← Archive<\/a>/,
+    'article breadcrumbs should return to the project root');
+  assert.match(landing, /href="\/encom-boardroom\/posts\/alpha-signal\/"/,
+    'discovery article links should retain the project path');
+  assert.match(landing, /href="\/encom-boardroom\/\?featured=1"/,
+    'discovery boardroom links should retain the project path');
+  assert.match(archive, /href="\/encom-boardroom\/archive\/2026\/"/,
+    'archive year links should retain the project path');
+  assert.match(rss, /https:\/\/chromedomev12\.github\.io\/encom-boardroom\/posts\/alpha-signal\//,
+    'RSS article URLs should retain the project path');
+  assert.match(sitemap, /https:\/\/chromedomev12\.github\.io\/encom-boardroom\/featured\//,
+    'sitemap discovery URLs should retain the project path');
+  assert.doesNotMatch(alpha, /(?:href|src)="\/(?:posts|blog-assets)\//,
+    'project publication should not leak origin-root article or asset links');
+}
+
+await testSiteUrlRequired();
+await testRootMetadataKeepsOwnershipSeparateFromAttribution();
 await testArticlePagesGenerated();
 await testJsonLdEscapesScriptContext();
 await testRssFeedValid();
@@ -249,4 +344,5 @@ await testSitemapComplete();
 await testDiscoveryPagesGenerated();
 await testManifestValid();
 await testNoJsReadability();
-console.log('blog publication tests passed (7 tests)');
+await testProjectSubpathLinks();
+console.log('blog publication tests passed (10 tests)');

@@ -94,7 +94,11 @@ export function normalizePostMeta(raw, fileMeta, diagnostics) {
       const lat = Number(raw.location.lat);
       const lng = Number(raw.location.lng);
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        location = { lat, lng, label: toOptionalString(raw.location.label) || '' };
+        if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+          location = { lat, lng, label: toOptionalString(raw.location.label) || '' };
+        } else {
+          diagnostics.push({ type: 'invalid-location', message: `Location coordinates out of range in ${ctx}`, context: ctx });
+        }
       } else {
         diagnostics.push({ type: 'invalid-location', message: `Invalid location object in ${ctx}`, context: ctx });
       }

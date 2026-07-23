@@ -89,14 +89,17 @@ npm run build:content
 
 This writes:
 
-- `js/blog-posts.js`, containing the `window.BLOG_POSTS` and `window.BLOG_INDEX` runtime contract
+- `js/blog-posts.js`, containing lightweight post metadata and the `window.BLOG_INDEX` discovery contract
+- `blog-data/posts/<slug>.json`, containing article bodies loaded only when a reader opens
 - Referenced files under `blog-assets/`
 
-Publish canonical pages:
+Publish canonical pages by supplying the real public base URL:
 
 ```sh
-npm run build:publication
+node scripts/publish-blog.mjs --site-url=https://chromedomev12.github.io/encom-boardroom --out=dist
 ```
+
+This fork is prepared for the free GitHub Pages project URL at `https://chromedomev12.github.io/encom-boardroom/`. The runtime and generated article links retain the `/encom-boardroom/` deployment path.
 
 The publication command rebuilds content first, then replaces `dist/` with:
 
@@ -109,10 +112,12 @@ The publication command rebuilds content first, then replaces `dist/` with:
 - `dist/sitemap.xml`
 - `dist/manifest.json`
 
-The default canonical site URL is `http://127.0.0.1:4322`. Set production publication values by calling the script directly:
+The publisher intentionally has no default canonical URL. You can alternatively set `BLOG_SITE_URL` before running `npm run build:publication`; the build stops rather than emitting localhost or upstream ownership metadata when no URL is configured.
+
+For a disposable local publication preview only, pass the local server URL explicitly:
 
 ```sh
-node scripts/publish-blog.mjs --site-url=https://example.com --out=dist
+node scripts/publish-blog.mjs --site-url=http://127.0.0.1:4322 --out=dist
 ```
 
 Rebuild the Browserify application bundle after changing files under `src/`:
@@ -121,13 +126,13 @@ Rebuild the Browserify application bundle after changing files under `src/`:
 npm run build:bundle
 ```
 
-Run the complete build with:
+Run the complete production build after setting `BLOG_SITE_URL`:
 
 ```sh
 npm run build
 ```
 
-`js/blog-posts.js`, `blog-assets/`, `dist/`, and `build/encom-boardroom.js` are generated and tracked. Do not edit them by hand. Regenerate and commit them with the source or content change that produced them.
+`js/blog-posts.js`, `blog-data/`, `blog-assets/`, `dist/`, and `build/encom-boardroom.js` are generated and tracked. Do not edit them by hand. Regenerate and commit them with the source or content change that produced them.
 
 ## Validation and tests
 

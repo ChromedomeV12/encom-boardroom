@@ -44,14 +44,15 @@
     "test:blog-runtime": "node scripts/test-blog-runtime.mjs",
     "test:motion-policy": "node test/motion-policy.test.mjs",
     "test:all": "npm run test:blog-data && npm run test:blog-router && npm run test:blog-publication && npm run test:blog-runtime && npm run test:motion-policy",
-    "test": "npm run build && npm run test:all",
+    "test": "npm run build:content && npm run build:bundle && npm run test:all",
     "serve": "node scripts/serve-static.mjs 4322",
     "start": "node stream-server.js"
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/arscan/encom-boardroom.git"
+    "url": "https://github.com/ChromedomeV12/encom-boardroom.git"
   },
+  "homepage": "https://chromedomev12.github.io/encom-boardroom/",
   "author": "rscanlon@mit.edu",
   "license": "MIT"
 }

@@ -1,0 +1,53 @@
+{
+  "id": "readable-interface-notes",
+  "slug": "readable-interface-notes",
+  "title": "Readable Interface Notes",
+  "description": "Guidelines for keeping a boardroom-inspired interface comfortable for actual reading.",
+  "date": "2026-06-14",
+  "updated": "",
+  "tags": [
+    "readability",
+    "design"
+  ],
+  "category": "Design Log",
+  "featured": false,
+  "draft": false,
+  "aliases": [],
+  "hero": "",
+  "series": "",
+  "location": null,
+  "redirectFrom": [],
+  "themeColor": "",
+  "relPath": "readable-interface-notes.md",
+  "excerpt": "Guidelines for keeping a boardroom-inspired interface comfortable for actual reading.",
+  "wordCount": 75,
+  "readTime": 1,
+  "headings": [
+    {
+      "id": "practical-defaults",
+      "level": 2,
+      "text": "Practical Defaults"
+    }
+  ],
+  "toc": [
+    {
+      "id": "practical-defaults",
+      "text": "Practical Defaults",
+      "level": 2,
+      "children": []
+    }
+  ],
+  "outgoingLinks": [],
+  "backlinks": [
+    {
+      "slug": "welcome-to-the-grid",
+      "title": "Welcome to the Grid"
+    }
+  ],
+  "linkDegree": 1,
+  "relatedPosts": [
+    "welcome-to-the-grid"
+  ],
+  "assets": [],
+  "html": "<p>High-contrast cyan text on black can look sharp in screenshots and still become tiring in a long article.</p>\n<h2 id=\"practical-defaults\">Practical Defaults</h2>\n<ul>\n<li>Body copy uses off-white text without glow.</li>\n<li>Cyan and yellow stay in borders, labels, links, and small status elements.</li>\n<li>Motion respects reduced-motion preferences.</li>\n<li>Panels collapse into a normal reading stack on small screens.</li>\n</ul>\n<blockquote>\n<p><strong>Contrast check</strong>\nThe theme should be tested on a real laptop display, not only in a design mockup.</p>\n</blockquote>\n"
+}

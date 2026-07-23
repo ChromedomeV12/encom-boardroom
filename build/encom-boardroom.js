@@ -81711,9 +81711,12 @@ var state = {
   searchQuery: "",
   filterTag: null,
   filterYear: null,
-  posts: [],                // window.BLOG_POSTS
+  posts: [],                // lightweight window.BLOG_POSTS metadata
   index: {},                // window.BLOG_INDEX
   postBySlug: {},
+  payloadBySlug: {},        // full reader payloads, cached after first load
+  payloadRequests: {},      // in-flight loads, de-duplicated by slug
+  payloadLoader: null,
   readerOpen: false,
   readerPending: false,     // deep-link/requested reader awaiting lifecycle readiness
   readerOriginCaptured: false,
@@ -81738,7 +81741,31 @@ function emit(eventType, payload) {
 }
 
 BlogController.emit = emit;
-BlogController.init = function (posts, index) {
+function defaultPayloadLoader(post) {
+  return new Promise(function (resolve, reject) {
+    if (!post.contentPath || typeof window.XMLHttpRequest !== "function") {
+      reject(new Error("No reader payload loader is available for " + post.slug));
+      return;
+    }
+    var request = new window.XMLHttpRequest();
+    request.open("GET", post.contentPath, true);
+    request.onreadystatechange = function () {
+      if (request.readyState !== 4) return;
+      if (request.status >= 200 && request.status < 300) {
+        try { resolve(JSON.parse(request.responseText)); }
+        catch (error) { reject(error); }
+      } else {
+        reject(new Error("Reader payload request failed with status " + request.status));
+      }
+    };
+    request.onerror = function () {
+      reject(new Error("Reader payload request failed for " + post.slug));
+    };
+    request.send();
+  });
+}
+
+BlogController.init = function (posts, index, options) {
   state.ready = false;  // re-init implies a fresh boardroom lifecycle
   BlogController.stopArchiveReplay();
   state.lens = "featured";
@@ -81754,8 +81781,17 @@ BlogController.init = function (posts, index) {
   state.posts = posts || [];
   state.index = index || {};
   state.postBySlug = {};
+  state.payloadBySlug = {};
+  state.payloadRequests = {};
+  state.payloadLoader = options && typeof options.loadPost === "function"
+    ? options.loadPost
+    : defaultPayloadLoader;
   for (var i = 0; i < state.posts.length; i++) {
     state.postBySlug[state.posts[i].slug] = state.posts[i];
+    // Compatibility with old/generated fixtures that still include content.
+    if (typeof state.posts[i].html === "string") {
+      state.payloadBySlug[state.posts[i].slug] = state.posts[i];
+    }
   }
   // Parse the initial URL for a deep-linked post or discovery lens.
   BlogController.routeFromUrl();
@@ -81992,8 +82028,41 @@ BlogController.setLens = function (lens, pushHistory) {
 BlogController.getLens = function () { return state.lens; };
 BlogController.getPosts = function () { return state.posts; };
 BlogController.getIndex = function () { return state.index; };
-BlogController.getPost = function (slug) { return state.postBySlug[slug] || null; };
+BlogController.getPost = function (slug) {
+  return state.payloadBySlug[slug] || state.postBySlug[slug] || null;
+};
 BlogController.isReady = function () { return state.ready; };
+
+// Load a full article only when the reader needs it. Concurrent requests for
+// the same slug share one promise, and successful payloads stay cached.
+BlogController.loadPost = function (slug) {
+  var metadata = state.postBySlug[slug];
+  if (!metadata) return Promise.reject(new Error("Unknown post: " + slug));
+  if (state.payloadBySlug[slug]) return Promise.resolve(state.payloadBySlug[slug]);
+  if (!metadata.contentPath) {
+    state.payloadBySlug[slug] = metadata;
+    return Promise.resolve(metadata);
+  }
+  if (state.payloadRequests[slug]) return state.payloadRequests[slug];
+
+  var request = Promise.resolve(state.payloadLoader(metadata)).then(function (payload) {
+    if (!payload || payload.slug !== slug || typeof payload.html !== "string") {
+      throw new Error("Invalid reader payload for " + slug);
+    }
+    var post = {};
+    var key;
+    for (key in metadata) post[key] = metadata[key];
+    for (key in payload) post[key] = payload[key];
+    state.payloadBySlug[slug] = post;
+    delete state.payloadRequests[slug];
+    return post;
+  }).then(null, function (error) {
+    delete state.payloadRequests[slug];
+    throw error;
+  });
+  state.payloadRequests[slug] = request;
+  return request;
+};
 
 // ---- Post list for the current lens --------------------------------------
 function publicationYear(post) {
@@ -82038,22 +82107,48 @@ BlogController.getVisiblePosts = function () {
 
 // ---- Reader: open/close with focus management + scroll lock --------------
 BlogController.openPost = function (slug) {
-  var post = state.postBySlug[slug];
-  if (!post) return;
+  var metadata = state.postBySlug[slug];
+  if (!metadata) return;
   // Pending deep links are rendered by the adapter after it subscribes;
   // ordinary opens emit the same reader signal immediately.
   if (state.selectedSlug === slug && state.readerOpen && !state.readerPending) return;
+  // Repeated activation while this payload is already in flight must not
+  // attach another completion handler and emit duplicate reader signals.
+  if (state.selectedSlug === slug && state.readerPending && state.payloadRequests[slug]) {
+    return state.payloadRequests[slug];
+  }
   state.selectedSlug = slug;
   state.readerOpen = true;
   captureReaderOrigin();
-  state.readerPending = false;
-  emit("post-open", { slug: slug, post: post });
-  emit("reader-open", {}); // Signal for motion policy
   // Only push history if not already at this URL (e.g., from deep link)
   var params = parseUrlParams();
   if (params.post !== slug) {
     pushUrl({ post: slug });
   }
+
+  function finishOpen(post) {
+    // Ignore a slow response after the user closed or selected another post.
+    if (state.selectedSlug !== slug || !state.readerOpen) return post;
+    state.readerPending = false;
+    emit("post-open", { slug: slug, post: post });
+    emit("reader-open", {}); // Signal for motion policy
+    return post;
+  }
+
+  if (state.payloadBySlug[slug] || !metadata.contentPath) {
+    return finishOpen(state.payloadBySlug[slug] || metadata);
+  }
+
+  state.readerPending = true;
+  emit("post-loading", { slug: slug, post: metadata });
+  return BlogController.loadPost(slug).then(finishOpen, function (error) {
+    if (state.selectedSlug === slug) {
+      state.readerPending = false;
+      state.readerOpen = false;
+      emit("post-error", { slug: slug, error: error });
+    }
+    return null;
+  });
   // The reader UI is rendered by the adapter; we just manage state + signals.
   // Focus management happens in the adapter's reader implementation.
 };

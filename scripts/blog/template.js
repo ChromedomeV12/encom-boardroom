@@ -66,6 +66,24 @@ function escapeJsonForHtml(value) {
     .replace(/\u2029/g, '\\u2029');
 }
 
+// Return a root-relative URL that retains the configured deployment path.
+// `siteUrl` may be an origin root or a project site such as
+// https://example.github.io/project.
+export function sitePathname(siteUrl, relativePath = '') {
+  const pathname = new URL(siteUrl).pathname.replace(/\/+$/, '');
+  const relative = String(relativePath).replace(/^\/+/, '');
+  return `${pathname || ''}/${relative}`;
+}
+
+function rebasePostHtml(html, siteUrl) {
+  const basePath = sitePathname(siteUrl).replace(/\/$/, '');
+  if (!basePath) return String(html || '');
+  return String(html || '').replace(
+    /\b(href|src)="\/(posts|blog-assets)\//g,
+    `$1="${basePath}/$2/`
+  );
+}
+
 
 function renderTocInline(tocTree) {
   if (!tocTree || !tocTree.length) return '';
@@ -79,10 +97,10 @@ function renderTocInline(tocTree) {
   return '<nav class="toc"><h2>Contents</h2>' + renderList(tocTree) + '</nav>';
 }
 
-function renderLinkList(label, links) {
+function renderLinkList(label, links, siteUrl) {
   if (!links || !links.length) return '';
   const lis = links.map((l) =>
-    '<li><a href="/posts/' + escapeHtml(l.slug) + '/">' + escapeHtml(l.title) + '</a></li>'
+    '<li><a href="' + escapeHtml(sitePathname(siteUrl, `posts/${l.slug}/`)) + '">' + escapeHtml(l.title) + '</a></li>'
   ).join('');
   return '<section class="links"><h2>' + escapeHtml(label) + '</h2><ul>' + lis + '</ul></section>';
 }
@@ -142,16 +160,16 @@ ${ogImage ? `<meta property="og:image" content="${escapeHtml(ogImage)}">` : ''}
 </head>
 <body>
 <article>
-<p class="crumb"><a href="/">← Archive</a> / ${escapeHtml(post.category || 'Notes')}</p>
+<p class="crumb"><a href="${escapeHtml(sitePathname(siteUrl))}">← Archive</a> / ${escapeHtml(post.category || 'Notes')}</p>
 <p class="meta">${escapeHtml(post.category || 'Notes')} // ${escapeHtml(String(post.readTime || '?'))} MIN READ // ${escapeHtml(post.date || '')}</p>
 <h1>${escapeHtml(post.title)}</h1>
 ${post.description ? `<p class="meta">${escapeHtml(post.description)}</p>` : ''}
 ${renderTocInline(post.toc)}
-${post.html}
-${renderLinkList('Links Out', outgoingTitles)}
-${renderLinkList('Linked From', backlinkTitles)}
-${related.length ? renderLinkList('Related', related) : ''}
-<a class="boardroom-link" href="/?post=${encodeURIComponent(post.slug)}">Open in Boardroom →</a>
+${rebasePostHtml(post.html, siteUrl)}
+${renderLinkList('Links Out', outgoingTitles, siteUrl)}
+${renderLinkList('Linked From', backlinkTitles, siteUrl)}
+${related.length ? renderLinkList('Related', related, siteUrl) : ''}
+<a class="boardroom-link" href="${escapeHtml(sitePathname(siteUrl))}?post=${encodeURIComponent(post.slug)}">Open in Boardroom →</a>
 <footer>
 <p>ENCOM Archive — ${escapeHtml(String(post.wordCount || ''))} words // ${escapeHtml(post.date || '')}</p>
 </footer>
@@ -162,11 +180,12 @@ ${related.length ? renderLinkList('Related', related) : ''}
 
 /**
  * Render an index/discovery page (latest, featured, tag, category, archive).
- * title, posts (array of {slug,title,excerpt,date,category,readTime,tags}), siteUrl.
+ * title, posts (array of {slug,title,excerpt,date,category,readTime,tags}),
+ * canonicalUrl.
  */
-export function renderIndexPage(title, posts, siteUrl, description = '') {
+export function renderIndexPage(title, posts, canonicalUrl, description = '', siteUrl = canonicalUrl) {
   const items = posts.map((p) => {
-    const href = `/posts/${p.slug}/`;
+    const href = sitePathname(siteUrl, `posts/${p.slug}/`);
     return `<article style="border-bottom:1px solid rgba(111,192,186,.15);padding:18px 0;margin:0">
 <p class="meta">${escapeHtml(p.category || 'Notes')} // ${escapeHtml(String(p.readTime || '?'))}m // ${escapeHtml(p.date || '')}</p>
 <h2 style="margin:4px 0 6px;font-size:20px"><a href="${href}" style="border:0;color:#f2f7f4">${escapeHtml(p.title)}</a></h2>
@@ -181,16 +200,21 @@ export function renderIndexPage(title, posts, siteUrl, description = '') {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)} — ENCOM Archive</title>
 <meta name="description" content="${escapeHtml(description || title)}">
-<link rel="canonical" href="${escapeHtml(siteUrl)}">
+<link rel="canonical" href="${escapeHtml(canonicalUrl)}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${escapeHtml(title)}">
+<meta property="og:description" content="${escapeHtml(description || title)}">
+<meta property="og:url" content="${escapeHtml(canonicalUrl)}">
+<meta property="og:site_name" content="ENCOM Archive">
 <style>${READABLE_CSS}</style>
 </head>
 <body>
 <article>
-<p class="crumb"><a href="/">← Archive</a></p>
+<p class="crumb"><a href="${escapeHtml(sitePathname(siteUrl))}">← Archive</a></p>
 <h1>${escapeHtml(title)}</h1>
 ${description ? `<p style="color:#b8c4c0">${escapeHtml(description)}</p>` : ''}
 ${items || '<p>No posts.</p>'}
-<footer><p><a href="/?featured=1">Open Boardroom →</a></p></footer>
+<footer><p><a href="${escapeHtml(sitePathname(siteUrl))}?featured=1">Open Boardroom →</a></p></footer>
 </article>
 </body>
 </html>`;

@@ -9,7 +9,8 @@ import {
   renderIndexPage,
   renderRss,
   renderSitemap,
-  renderManifest
+  renderManifest,
+  sitePathname
 } from './template.js';
 
 async function writePage(dir, relPath, content) {
@@ -63,13 +64,19 @@ export async function publish(posts, index, options) {
 
   // 2. Latest landing
   const latestPosts = (index.latestPosts || []).map((s) => bySlug.get(s)).filter(Boolean);
-  const landingHtml = renderIndexPage('ENCOM Archive — Latest', latestPosts, siteUrl, description);
+  const landingHtml = renderIndexPage('ENCOM Archive — Latest', latestPosts, `${siteUrl}/`, description, siteUrl);
   await writePage(outDir, 'index.html', landingHtml);
   pageCount++; byteCount += landingHtml.length;
 
   // 3. Featured
   const featuredPosts = (index.featuredPosts || []).map((s) => bySlug.get(s)).filter(Boolean);
-  const featuredHtml = renderIndexPage('Featured', featuredPosts, siteUrl, 'Featured archive selections.');
+  const featuredHtml = renderIndexPage(
+    'Featured',
+    featuredPosts,
+    `${siteUrl}/featured/`,
+    'Featured archive selections.',
+    siteUrl
+  );
   await writePage(outDir, 'featured/index.html', featuredHtml);
   pageCount++; byteCount += featuredHtml.length;
 
@@ -77,7 +84,7 @@ export async function publish(posts, index, options) {
   for (const [tag, slugs] of Object.entries(index.tags || {})) {
     const tagPosts = slugs.map((s) => bySlug.get(s)).filter(Boolean);
     const tagSlug = tag.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'untagged';
-    const html = renderIndexPage(`Tag: ${tag}`, tagPosts, `${siteUrl}/tags/${tagSlug}/`, `Posts tagged ${tag}.`);
+    const html = renderIndexPage(`Tag: ${tag}`, tagPosts, `${siteUrl}/tags/${tagSlug}/`, `Posts tagged ${tag}.`, siteUrl);
     await writePage(outDir, `tags/${tagSlug}/index.html`, html);
     pageCount++; byteCount += html.length;
   }
@@ -86,7 +93,7 @@ export async function publish(posts, index, options) {
   for (const [cat, slugs] of Object.entries(index.categories || {})) {
     const catPosts = slugs.map((s) => bySlug.get(s)).filter(Boolean);
     const catSlug = cat.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'notes';
-    const html = renderIndexPage(`Category: ${cat}`, catPosts, `${siteUrl}/categories/${catSlug}/`, `Posts in ${cat}.`);
+    const html = renderIndexPage(`Category: ${cat}`, catPosts, `${siteUrl}/categories/${catSlug}/`, `Posts in ${cat}.`, siteUrl);
     await writePage(outDir, `categories/${catSlug}/index.html`, html);
     pageCount++; byteCount += html.length;
   }
@@ -96,12 +103,12 @@ export async function publish(posts, index, options) {
   let archiveItems = '';
   for (const year of years) {
     const yearPosts = (index.archiveByYear[year] || []).map((s) => bySlug.get(s)).filter(Boolean);
-    const yearHtml = renderIndexPage(`Archive: ${year}`, yearPosts, `${siteUrl}/archive/${year}/`, `Posts from ${year}.`);
+    const yearHtml = renderIndexPage(`Archive: ${year}`, yearPosts, `${siteUrl}/archive/${year}/`, `Posts from ${year}.`, siteUrl);
     await writePage(outDir, `archive/${year}/index.html`, yearHtml);
     pageCount++; byteCount += yearHtml.length;
-    archiveItems += `<li><a href="/archive/${year}/">${year}</a> (${yearPosts.length})</li>`;
+    archiveItems += `<li><a href="${sitePathname(siteUrl, `archive/${year}/`)}">${year}</a> (${yearPosts.length})</li>`;
   }
-  const archiveIndexHtml = renderIndexPage('Archive', [], siteUrl, 'All posts by year.')
+  const archiveIndexHtml = renderIndexPage('Archive', [], `${siteUrl}/archive/`, 'All posts by year.', siteUrl)
     .replace('<p>No posts.</p>', `<ul>${archiveItems}</ul>`);
   await writePage(outDir, 'archive/index.html', archiveIndexHtml);
   pageCount++; byteCount += archiveIndexHtml.length;

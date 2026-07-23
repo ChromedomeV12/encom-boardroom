@@ -1,7 +1,7 @@
 // Public build orchestrator for the ENCOM archive blog.
 // Reads content/obsidian, validates + normalizes Markdown, computes derived
-// metadata, copies referenced assets, and emits js/blog-posts.js carrying
-// window.BLOG_POSTS and window.BLOG_INDEX for the legacy runtime contract.
+// metadata, copies referenced assets, and emits a lightweight runtime
+// manifest plus one lazily loaded JSON payload per published post.
 //
 // Modules under scripts/blog/ do the real work; this file is the glue.
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
@@ -13,13 +13,14 @@ import { resolveWikilinks } from './blog/links.js';
 import { computeBacklinks, computeRelated, buildIndex } from './blog/index.js';
 import { renderMarkdown, countWords, estimateReadTime } from './blog/markdown.js';
 import { buildExcerpt } from './blog/excerpt.js';
-import { copyAsset, assetExists } from './blog/assets.js';
+import { copyAsset, assetExists, normalizeAssetTarget } from './blog/assets.js';
 import { Diagnostics } from './blog/diagnostics.js';
 
 const root = process.cwd();
 const sourceDir = path.join(root, 'content', 'obsidian');
 const assetOutDir = path.join(root, 'blog-assets');
 const outFile = path.join(root, 'js', 'blog-posts.js');
+const payloadOutDir = path.join(root, 'blog-data', 'posts');
 const markdownExtensions = new Set(['.md', '.mdx']);
 
 async function exists(filePath) {
@@ -95,8 +96,10 @@ for (const rp of rawPosts) {
 // --- 4. Resolve wikilinks/embeds, render markdown, compute derived --------
 const posts = [];
 for (const rp of rawPosts) {
-  const { body: resolvedBody, outgoingLinks, assets } =
+  const { body: resolvedBody, outgoingLinks, assets: embeddedAssets } =
     resolveWikilinks(rp.body, postByTitle, sourceDir, diag);
+  const hero = normalizeAssetTarget(rp.meta.hero);
+  const assets = [...new Set([...embeddedAssets, ...(hero ? [hero] : [])])];
   const { html, headings, toc } = renderMarkdown(resolvedBody);
   const wordCount = countWords(resolvedBody);
   const readTime = estimateReadTime(wordCount);
@@ -116,6 +119,7 @@ for (const rp of rawPosts) {
 
   posts.push({
     ...rp.meta,
+    hero,
     excerpt,
     wordCount,
     readTime,
@@ -138,10 +142,12 @@ for (const p of posts) {
 
 const blogIndex = buildIndex(posts);
 
-// --- 6. Emit the legacy runtime contract ---------------------------------
+// --- 6. Emit lightweight metadata + per-post reader payloads -------------
 await mkdir(path.join(root, 'js'), { recursive: true });
 await rm(assetOutDir, { recursive: true, force: true });
+await rm(payloadOutDir, { recursive: true, force: true });
 await mkdir(assetOutDir, { recursive: true });
+await mkdir(payloadOutDir, { recursive: true });
 // Copy only referenced assets (traversal-safe; missing ones were flagged above).
 for (const p of posts) {
   for (const assetRel of p.assets) {
@@ -149,12 +155,36 @@ for (const p of posts) {
   }
 }
 
+// Discovery, search, archive replay, and boardroom widgets only need post
+// metadata. Keep article HTML/TOC/link details out of the startup payload.
+const runtimePosts = posts.map((post) => {
+  const {
+    html, headings, toc, outgoingLinks, backlinks, assets,
+    ...metadata
+  } = post;
+  return {
+    ...metadata,
+    // Relative to the boardroom entry page so the same artifact works both
+    // at localhost `/` and a GitHub Pages project path such as
+    // `/encom-boardroom/`.
+    contentPath: `blog-data/posts/${encodeURIComponent(post.slug)}.json`
+  };
+});
+
+for (const post of posts) {
+  await writeFile(
+    path.join(payloadOutDir, `${post.slug}.json`),
+    `${JSON.stringify(post, null, 2)}\n`,
+    'utf8'
+  );
+}
+
 await writeFile(
   outFile,
-  `window.BLOG_POSTS = ${JSON.stringify(posts, null, 2)};\nwindow.BLOG_INDEX = ${JSON.stringify(blogIndex, null, 2)};\n`,
+  `window.BLOG_POSTS = ${JSON.stringify(runtimePosts, null, 2)};\nwindow.BLOG_INDEX = ${JSON.stringify(blogIndex, null, 2)};\n`,
   'utf8'
 );
 
-console.log(`Generated ${posts.length} post(s) into js/blog-posts.js.`);
+console.log(`Generated ${posts.length} post metadata record(s) and lazy reader payload(s).`);
 const exitCode = diag.finalize('Blog content build');
 if (exitCode) process.exitCode = exitCode;

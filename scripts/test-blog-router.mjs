@@ -429,6 +429,95 @@ assert.deepEqual(
   'archive year filtering should use the publication date year, not local timezone',
 );
 
-console.log('blog router tests passed (28 tests)');
+// --- Test 29: article bodies load lazily and are cached ------------------
+var lazyLoadCount = 0;
+var lazyPosts = [{
+  slug: 'lazy',
+  title: 'Lazy Signal',
+  date: '2026-06-16',
+  featured: true,
+  category: 'Notes',
+  tags: [],
+  excerpt: 'Metadata only',
+  readTime: 1,
+  wordCount: 10,
+  contentPath: '/blog-data/posts/lazy.json'
+}];
+resetUrl('');
+BlogController.init(lazyPosts, {}, {
+  loadPost: function (metadata) {
+    lazyLoadCount++;
+    assert.equal(metadata.html, undefined, 'loader receives metadata without article HTML');
+    return Promise.resolve({
+      slug: metadata.slug,
+      title: metadata.title,
+      html: '<p>Loaded on demand.</p>',
+      toc: [],
+      outgoingLinks: [],
+      backlinks: [],
+      relatedPosts: []
+    });
+  }
+});
+var lazyOpenPayloads = [];
+BlogController.on('post-open', function (data) {
+  if (data.slug === 'lazy') lazyOpenPayloads.push(data.post);
+});
+await BlogController.openPost('lazy');
+assert.equal(lazyLoadCount, 1, 'first reader open should fetch one payload');
+assert.match(lazyOpenPayloads[0].html, /Loaded on demand/, 'post-open should carry the full payload');
+BlogController.closePost();
+await BlogController.openPost('lazy');
+assert.equal(lazyLoadCount, 1, 'subsequent opens should use the cached payload');
 
+// --- Test 30: concurrent payload reads are de-duplicated -----------------
+var resolveSharedPayload;
+var sharedLoadCount = 0;
+resetUrl('');
+BlogController.init(lazyPosts, {}, {
+  loadPost: function () {
+    sharedLoadCount++;
+    return new Promise(function (resolve) { resolveSharedPayload = resolve; });
+  }
+});
+var firstLoad = BlogController.loadPost('lazy');
+var secondLoad = BlogController.loadPost('lazy');
+assert.equal(firstLoad, secondLoad, 'concurrent callers should share the in-flight promise');
+assert.equal(sharedLoadCount, 1, 'only one network request should start');
+resolveSharedPayload({ slug: 'lazy', html: '<p>Shared.</p>' });
+await firstLoad;
 
+// --- Test 31: repeated opens during loading emit reader content once ------
+var resolvePendingPayload;
+var pendingLoadCount = 0;
+var pendingOpenCount = 0;
+var pendingPosts = [{
+  slug: 'pending',
+  title: 'Pending Signal',
+  date: '2026-06-16',
+  featured: true,
+  category: 'Notes',
+  tags: [],
+  excerpt: '',
+  readTime: 1,
+  wordCount: 10,
+  contentPath: '/blog-data/posts/pending.json'
+}];
+resetUrl('');
+BlogController.init(pendingPosts, {}, {
+  loadPost: function () {
+    pendingLoadCount++;
+    return new Promise(function (resolve) { resolvePendingPayload = resolve; });
+  }
+});
+BlogController.on('post-open', function (data) {
+  if (data.slug === 'pending') pendingOpenCount++;
+});
+var pendingOpen = BlogController.openPost('pending');
+BlogController.openPost('pending');
+assert.equal(pendingLoadCount, 1, 'repeated activation should share the active payload request');
+resolvePendingPayload({ slug: 'pending', html: '<p>Ready.</p>' });
+await pendingOpen;
+assert.equal(pendingOpenCount, 1, 'one payload completion should emit one post-open signal');
+
+console.log('blog router tests passed (31 tests)');

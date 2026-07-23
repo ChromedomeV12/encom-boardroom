@@ -33,10 +33,15 @@ async function runBuild(root) {
   const output = await readFile(path.join(root, 'js', 'blog-posts.js'), 'utf8');
   const jsonMatch = output.match(/window\.BLOG_POSTS = ([\s\S]*?);\nwindow\.BLOG_INDEX = ([\s\S]*?);\n/);
   assert.ok(jsonMatch, 'expected build output to define BLOG_POSTS and BLOG_INDEX');
-  return {
-    posts: JSON.parse(jsonMatch[1]),
-    index: JSON.parse(jsonMatch[2])
-  };
+  const metadata = JSON.parse(jsonMatch[1]);
+  const posts = await Promise.all(metadata.map(async (post) => {
+    const payloadPath = path.join(
+      root,
+      ...post.contentPath.replace(/^\//, '').split('/').map(decodeURIComponent)
+    );
+    return JSON.parse(await readFile(payloadPath, 'utf8'));
+  }));
+  return { posts, metadata, index: JSON.parse(jsonMatch[2]) };
 }
 
 async function runBuildFails(root) {
@@ -84,11 +89,17 @@ category: Dispatches
 Beta body.
 `);
 
-  const { posts, index } = await runBuild(root);
+  const { posts, metadata, index } = await runBuild(root);
   const alpha = posts.find((p) => p.slug === 'alpha-signal');
   const beta = posts.find((p) => p.slug === 'beta-signal');
 
   assert.equal(posts.length, 2);
+  assert.equal(metadata.length, 2);
+  assert.ok(metadata.every((post) => !Object.hasOwn(post, 'html')), 'startup metadata excludes article HTML');
+  assert.ok(
+    metadata.every((post) => post.contentPath.startsWith('blog-data/posts/')),
+    'lazy payload URLs should resolve from local root or a deployment subpath'
+  );
   assert.deepEqual(alpha.outgoingLinks, [{ slug: 'beta-signal', title: 'Beta Signal' }]);
   assert.deepEqual(alpha.assets, ['attachments/panel.svg']);
   assert.deepEqual(beta.backlinks, [{ slug: 'alpha-signal', title: 'Alpha Signal' }]);
@@ -367,6 +378,68 @@ Body.`);
   assert.doesNotMatch(posts[0].slug, /[/\\?#]/, 'explicit slug must remain one safe path segment');
 }
 
+// --- Test 16: A frontmatter-only hero is validated and copied ------------
+async function testFrontmatterHeroAsset() {
+  const root = await fixtureRoot('hero');
+  await writeFileRaw(root, 'content/obsidian/covers/hero image.svg', '<svg />');
+  await writePost(root, 'hero.md', `---
+title: Hero Signal
+date: 2026-06-15
+hero: covers\\hero image.svg
+---
+Body without an embedded image.`);
+  const { posts, metadata } = await runBuild(root);
+  assert.equal(posts[0].hero, 'covers/hero image.svg', 'hero path should be normalized');
+  assert.ok(posts[0].assets.includes('covers/hero image.svg'), 'hero should be part of the copied asset set');
+  assert.equal(metadata[0].hero, 'covers/hero image.svg', 'runtime metadata should expose the normalized hero');
+  assert.equal(
+    await readFile(path.join(root, 'blog-assets', 'covers', 'hero image.svg'), 'utf8'),
+    '<svg />',
+    'hero should be copied even when it is not embedded in Markdown'
+  );
+}
+
+// --- Test 17: A missing frontmatter-only hero fails the build -------------
+async function testMissingFrontmatterHeroFails() {
+  const root = await fixtureRoot('missing-hero');
+  await writePost(root, 'hero.md', `---
+title: Missing Hero
+date: 2026-06-15
+hero: covers/missing.png
+---
+Body.`);
+  const output = await runBuildFails(root);
+  assert.match(output, /Embedded asset "covers\/missing\.png" not found/);
+}
+
+// --- Test 19: Object-form locations enforce geographic ranges ------------
+async function testObjectLocationRanges() {
+  const root = await fixtureRoot('location-ranges');
+  await writePost(root, 'invalid-latitude.md', `---
+title: Invalid Latitude
+date: 2026-06-15
+location:
+  lat: 90.0001
+  lng: 0
+---
+Body.`);
+  await writePost(root, 'invalid-longitude.md', `---
+title: Invalid Longitude
+date: 2026-06-15
+location:
+  lat: 0
+  lng: -180.0001
+---
+Body.`);
+
+  const output = await runBuildFails(root);
+  assert.equal(
+    (output.match(/Location coordinates out of range/g) || []).length,
+    2,
+    'both object-form latitude and longitude violations should fail the build',
+  );
+}
+
 
 await testBuildsBlogIndexAndBacklinks();
 await testFailsForMissingWikilinkAndAsset();
@@ -384,4 +457,7 @@ await testAliasWikilinks();
 await testDeterministicOutput();
 await testSlugFallbackToFilename();
 await testExplicitSlugIsCanonicalSegment();
-console.log('blog data tests passed (16 tests)');
+await testFrontmatterHeroAsset();
+await testMissingFrontmatterHeroFails();
+await testObjectLocationRanges();
+console.log('blog data tests passed (19 tests)');

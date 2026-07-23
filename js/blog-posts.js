@@ -23,34 +23,11 @@ window.BLOG_POSTS = [
     "excerpt": "Guidelines for keeping a boardroom-inspired interface comfortable for actual reading.",
     "wordCount": 75,
     "readTime": 1,
-    "headings": [
-      {
-        "id": "practical-defaults",
-        "level": 2,
-        "text": "Practical Defaults"
-      }
-    ],
-    "toc": [
-      {
-        "id": "practical-defaults",
-        "text": "Practical Defaults",
-        "level": 2,
-        "children": []
-      }
-    ],
-    "outgoingLinks": [],
-    "backlinks": [
-      {
-        "slug": "welcome-to-the-grid",
-        "title": "Welcome to the Grid"
-      }
-    ],
     "linkDegree": 1,
     "relatedPosts": [
       "welcome-to-the-grid"
     ],
-    "assets": [],
-    "html": "<p>High-contrast cyan text on black can look sharp in screenshots and still become tiring in a long article.</p>\n<h2 id=\"practical-defaults\">Practical Defaults</h2>\n<ul>\n<li>Body copy uses off-white text without glow.</li>\n<li>Cyan and yellow stay in borders, labels, links, and small status elements.</li>\n<li>Motion respects reduced-motion preferences.</li>\n<li>Panels collapse into a normal reading stack on small screens.</li>\n</ul>\n<blockquote>\n<p><strong>Contrast check</strong>\nThe theme should be tested on a real laptop display, not only in a design mockup.</p>\n</blockquote>\n"
+    "contentPath": "blog-data/posts/readable-interface-notes.json"
   },
   {
     "id": "welcome-to-the-grid",
@@ -77,47 +54,11 @@ window.BLOG_POSTS = [
     "excerpt": "A sample post showing readable ENCOM styling, wikilinks, callouts, and Obsidian image embeds.",
     "wordCount": 90,
     "readTime": 1,
-    "headings": [
-      {
-        "id": "publish-folder",
-        "level": 2,
-        "text": "Publish Folder"
-      },
-      {
-        "id": "local-assets",
-        "level": 2,
-        "text": "Local Assets"
-      }
-    ],
-    "toc": [
-      {
-        "id": "publish-folder",
-        "text": "Publish Folder",
-        "level": 2,
-        "children": []
-      },
-      {
-        "id": "local-assets",
-        "text": "Local Assets",
-        "level": 2,
-        "children": []
-      }
-    ],
-    "outgoingLinks": [
-      {
-        "slug": "readable-interface-notes",
-        "title": "Readable Interface Notes"
-      }
-    ],
-    "backlinks": [],
     "linkDegree": 1,
     "relatedPosts": [
       "readable-interface-notes"
     ],
-    "assets": [
-      "attachments/signal-panel.svg"
-    ],
-    "html": "<p>This sample note lives in Obsidian and is mirrored into the website before each build.\nIt links to <a href=\"/posts/readable-interface-notes/\">Readable Interface Notes</a> using Obsidian wikilink syntax.</p>\n<blockquote>\n<p><strong>Reader-first rule</strong>\nThe interface can glow, pulse, and feel cinematic, but the article body should remain quiet and readable.</p>\n</blockquote>\n<h2 id=\"publish-folder\">Publish Folder</h2>\n<p>Keep only posts meant for the public website in <code>content/obsidian</code>. Drafts can stay in your private vault, or they can use <code>draft: true</code> if you need them nearby.</p>\n<h2 id=\"local-assets\">Local Assets</h2>\n<p>Obsidian image embeds also work:</p>\n<p><img src=\"/blog-assets/attachments/signal-panel.svg\" alt=\"attachments/signal-panel.svg\"></p>\n<p>The validation script checks that embedded assets exist before a production build.</p>\n"
+    "contentPath": "blog-data/posts/welcome-to-the-grid.json"
   }
 ];
 window.BLOG_INDEX = {

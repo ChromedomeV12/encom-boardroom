@@ -30,11 +30,53 @@
   var savedLightTableAriaHidden = null;
   var savedBoardroomAriaHidden = null;
   var savedBodyOverflow = null;
+  var readerFocusContainmentHandler = null;
 
   function escapeHtml(value) {
     return String(value || '').replace(/[&<>"']/g, function (char) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char];
     });
+  }
+
+  function deploymentBasePath() {
+    var pathname = window.location.pathname || '/';
+    // The boardroom can be opened as `/project/` or `/project/index.html`.
+    if (pathname.charAt(pathname.length - 1) !== '/') {
+      pathname = pathname.slice(0, pathname.lastIndexOf('/') + 1);
+    }
+    return pathname.replace(/\/+$/, '');
+  }
+
+  function deploymentPath(rootPath) {
+    var normalized = String(rootPath || '').replace(/^\/+/, '');
+    var base = deploymentBasePath();
+    return (base || '') + '/' + normalized;
+  }
+
+  function rebaseReaderHtml(value) {
+    var base = deploymentBasePath();
+    if (!base) return String(value || '');
+    return String(value || '').replace(
+      /\b(href|src)="\/(posts|blog-assets)\//g,
+      '$1="' + base + '/$2/'
+    );
+  }
+
+  function parseCanonicalPostLink(link) {
+    var rawHref = link.getAttribute('href');
+    if (!rawHref) return null;
+    var probe = document.createElement('a');
+    probe.href = rawHref;
+    if (probe.host && probe.host !== window.location.host) return null;
+    var prefix = deploymentPath('posts/');
+    if (probe.pathname.indexOf(prefix) !== 0) return null;
+    var remainder = probe.pathname.slice(prefix.length);
+    var slugPart = remainder.split('/')[0];
+    if (!slugPart) return null;
+    return {
+      slug: decodeURIComponent(slugPart),
+      heading: probe.hash ? decodeURIComponent(probe.hash.slice(1)) : ''
+    };
   }
 
   function renderLinkSection(label, links) {
@@ -60,6 +102,18 @@
   }
 
   // ---- Reader overlay with focus trap + scroll lock + escape ------------
+  function containReaderFocus(reader, event) {
+    if (!reader.classList.contains('is-open') || reader.contains(event.target)) return false;
+
+    event.preventDefault();
+    event.stopPropagation();
+    var closeBtn = reader.querySelector('.blog-reader-close');
+    var focusable = reader.querySelectorAll('a[href],button,[tabindex]:not([tabindex="-1"])');
+    var fallback = closeBtn || (focusable.length ? focusable[0] : reader);
+    if (typeof fallback.focus === 'function') fallback.focus();
+    return true;
+  }
+
   function installReader() {
     if (readerInstalled) return;
     readerInstalled = true;
@@ -150,27 +204,20 @@
       }
     });
 
-    // Focusin containment: redirect programmatic focus outside reader back to dialog
-    reader.addEventListener('focusin', function (event) {
-      if (!reader.classList.contains('is-open')) return;
-      var target = event.target;
-      // If focus lands outside the reader, redirect to close button or first focusable
-      if (!reader.contains(target)) {
-        event.preventDefault();
-        event.stopPropagation();
-        var closeBtn = reader.querySelector('.blog-reader-close');
-        var focusable = reader.querySelectorAll('a[href],button,[tabindex]:not([tabindex="-1"])');
-        var fallback = closeBtn || (focusable.length ? focusable[0] : reader);
-        if (typeof fallback.focus === 'function') {
-          fallback.focus();
-        }
-      }
-    });
+    // Capture focus at document scope because focus that escapes the dialog
+    // never bubbles through the reader itself. installReader's guard ensures
+    // this listener is registered only once across repeated open/close cycles.
+    if (!readerFocusContainmentHandler) {
+      readerFocusContainmentHandler = function (event) {
+        containReaderFocus(reader, event);
+      };
+      document.addEventListener('focusin', readerFocusContainmentHandler, true);
+    }
   }
 
-  function openReaderLocal(slug) {
+  function openReaderLocal(slug, loadedPost) {
     installReader();
-    var post = postBySlug[slug];
+    var post = loadedPost || postBySlug[slug];
     if (!post) return;
     var reader = document.querySelector('#blog-reader');
     var backlinks = post.backlinks || [];
@@ -206,7 +253,7 @@
       post.category + ' // ' + post.readTime + ' MIN READ // ' + post.date;
     reader.querySelector('.blog-reader-body').innerHTML =
       renderTocNav(post.toc) +
-      post.html +
+      rebaseReaderHtml(post.html) +
       renderLinkSection('LINKS OUT', outgoing) +
       renderLinkSection('LINKED FROM', backlinks) +
       (related.length ? renderLinkSection('RELATED', related) : '');
@@ -356,16 +403,16 @@
       else openReaderLocal(slug);
       return;
     }
-    var canonicalLink = event.target.closest('a[href^="/posts/"]');
+    var canonicalLink = event.target.closest('a[href]');
     if (canonicalLink && isPlainPrimarySelfClick(event, canonicalLink)) {
-      var canonicalMatch = canonicalLink.getAttribute('href').match(/^\/posts\/([^/#?]+)\/?(?:#([^?]+))?$/);
-      var canonicalSlug = canonicalMatch ? decodeURIComponent(canonicalMatch[1]) : '';
-      if (canonicalMatch && postBySlug[canonicalSlug]) {
+      var canonicalPost = parseCanonicalPostLink(canonicalLink);
+      var canonicalSlug = canonicalPost ? canonicalPost.slug : '';
+      if (canonicalPost && postBySlug[canonicalSlug]) {
         event.preventDefault();
         if (ctrl) ctrl.openPost(canonicalSlug);
         else openReaderLocal(canonicalSlug);
-        if (canonicalMatch[2]) {
-          var headingId = decodeURIComponent(canonicalMatch[2]);
+        if (canonicalPost.heading) {
+          var headingId = canonicalPost.heading;
           window.setTimeout(function () {
             var heading = document.getElementById(headingId);
             if (heading && typeof heading.scrollIntoView === 'function') heading.scrollIntoView();
@@ -388,7 +435,7 @@
   // ---- Controller signal subscriptions ----------------------------------
   if (ctrl) {
     ctrl.on('post-open', function (data) {
-      openReaderLocal(data.slug);
+      openReaderLocal(data.slug, data.post);
     });
     ctrl.on('post-close', function () {
       closeReaderLocal();

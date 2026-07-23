@@ -1,0 +1,67 @@
+{
+  "id": "welcome-to-the-grid",
+  "slug": "welcome-to-the-grid",
+  "title": "Welcome to the Grid",
+  "description": "A sample post showing readable ENCOM styling, wikilinks, callouts, and Obsidian image embeds.",
+  "date": "2026-06-15",
+  "updated": "2026-06-15",
+  "tags": [
+    "interface",
+    "obsidian",
+    "notes"
+  ],
+  "category": "Design Log",
+  "featured": true,
+  "draft": false,
+  "aliases": [],
+  "hero": "",
+  "series": "",
+  "location": null,
+  "redirectFrom": [],
+  "themeColor": "",
+  "relPath": "welcome-to-the-grid.md",
+  "excerpt": "A sample post showing readable ENCOM styling, wikilinks, callouts, and Obsidian image embeds.",
+  "wordCount": 90,
+  "readTime": 1,
+  "headings": [
+    {
+      "id": "publish-folder",
+      "level": 2,
+      "text": "Publish Folder"
+    },
+    {
+      "id": "local-assets",
+      "level": 2,
+      "text": "Local Assets"
+    }
+  ],
+  "toc": [
+    {
+      "id": "publish-folder",
+      "text": "Publish Folder",
+      "level": 2,
+      "children": []
+    },
+    {
+      "id": "local-assets",
+      "text": "Local Assets",
+      "level": 2,
+      "children": []
+    }
+  ],
+  "outgoingLinks": [
+    {
+      "slug": "readable-interface-notes",
+      "title": "Readable Interface Notes"
+    }
+  ],
+  "backlinks": [],
+  "linkDegree": 1,
+  "relatedPosts": [
+    "readable-interface-notes"
+  ],
+  "assets": [
+    "attachments/signal-panel.svg"
+  ],
+  "html": "<p>This sample note lives in Obsidian and is mirrored into the website before each build.\nIt links to <a href=\"/posts/readable-interface-notes/\">Readable Interface Notes</a> using Obsidian wikilink syntax.</p>\n<blockquote>\n<p><strong>Reader-first rule</strong>\nThe interface can glow, pulse, and feel cinematic, but the article body should remain quiet and readable.</p>\n</blockquote>\n<h2 id=\"publish-folder\">Publish Folder</h2>\n<p>Keep only posts meant for the public website in <code>content/obsidian</code>. Drafts can stay in your private vault, or they can use <code>draft: true</code> if you need them nearby.</p>\n<h2 id=\"local-assets\">Local Assets</h2>\n<p>Obsidian image embeds also work:</p>\n<p><img src=\"/blog-assets/attachments/signal-panel.svg\" alt=\"attachments/signal-panel.svg\"></p>\n<p>The validation script checks that embedded assets exist before a production build.</p>\n"
+}
