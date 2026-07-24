@@ -101,6 +101,8 @@ node scripts/publish-blog.mjs --site-url=https://chromedomev12.github.io/encom-b
 
 This fork is prepared for the free GitHub Pages project URL at `https://chromedomev12.github.io/encom-boardroom/`. The runtime and generated article links retain the `/encom-boardroom/` deployment path.
 
+The `Deploy GitHub Pages` workflow publishes the interactive boardroom at the project root and overlays the generated canonical routes (`posts`, `tags`, `categories`, `archive`, and `featured`) into the same Pages artifact. It runs for this development branch and `master`, and can also be started manually from GitHub Actions.
+
 The publication command rebuilds content first, then replaces `dist/` with:
 
 - `dist/posts/<slug>/index.html`
