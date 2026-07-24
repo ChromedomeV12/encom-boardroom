@@ -302,7 +302,6 @@
 
   // ---- Light-table + boardroom label swaps ------------------------------
   function installLightTableContent() {
-    text('#lt-header-top-left .lt-header-left-section', 'OBSIDIAN TOUCH APP OS12');
     text('#lt-header-top-right .lt-header-left-section', 'CENTRAL SYSTEM DATA ... LAUNCH BLOG ARCHIVE');
     html('#lt-readme .content', [
       '<h2>README <span class="alt-1">.TXT</span><em>END. PROGRAM</em></h2>',
@@ -353,31 +352,6 @@
   function html(selector, value) {
     var el = document.querySelector(selector);
     if (el) el.innerHTML = value;
-  }
-
-  // ---- Terminal form wiring -----------------------------------------------
-  function wireTerminalForm() {
-    var form = document.getElementById('lt-command-form');
-    var input = document.getElementById('lt-command-input');
-    if (!form || !input) return;
-    
-    form.addEventListener('submit', function(event) {
-      event.preventDefault();
-      var command = input.value.trim();
-      if (command && window.LightTable && window.LightTable.executeCommand) {
-        // Simulate the command being typed into the visual terminal
-        var commandLines = document.getElementById('lt-command-lines');
-        if (commandLines) {
-          var newCommand = document.createElement('div');
-          newCommand.className = 'command';
-          newCommand.innerHTML = '<span class="prompt">encom-sh:encom_root$&nbsp;</span><span class="command-text">' + escapeHtml(command) + '</span><span class="blink command-blinker">&nbsp;</span>';
-          commandLines.appendChild(newCommand);
-        }
-        // Execute via LightTable's parser
-        window.LightTable.executeCommand(command);
-        input.value = '';
-      }
-    });
   }
 
   function isPlainPrimarySelfClick(event, link) {
@@ -466,7 +440,6 @@
   function boot() {
     document.body.classList.add('blog-flex');
     installLightTableContent();
-    wireTerminalForm();
     if (ctrl && ctrl.renderPendingPost) {
       ctrl.renderPendingPost();
     }

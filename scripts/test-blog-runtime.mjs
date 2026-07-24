@@ -224,7 +224,9 @@ assert.match(adapter, /removeAttribute\(['"]aria-hidden['"]\)|setAttribute\(['"]
 assert.match(boardroom, /role=["']button['"]|tabindex=["']0['"]/, 'boardroom post rows should be focusable controls');
 assert.match(boardroom, /aria-label/, 'boardroom post rows should have accessible labels');
 assert.match(lightTable, /executeCommand/, 'light-table should expose executeCommand API');
-assert.match(index, /lt-command-form|lt-command-input/, 'index.html should have a real labeled terminal form');
+assert.doesNotMatch(index, /lt-command-form|lt-command-input/, 'light-table terminal should remain display-only like the original');
+assert.match(index, /ENCOM TOUCH APP\s*<span class=["']alt-1["']>OS<\/span><span class=["']alt-2["']>12<\/span>/, 'index.html should preserve the original ENCOM OS12 title treatment');
+assert.doesNotMatch(adapter, /OBSIDIAN TOUCH APP OS12/, 'blog adapter should not overwrite the original ENCOM OS12 title');
 assert.match(lightTable, /input|textarea|select|contenteditable/, 'light-table key handler should exempt form inputs');
 assert.match(lightTable, /metaKey|ctrlKey|altKey/, 'light-table key handler should ignore modifier shortcuts');
 assert.match(boardroom, /renderBlogInteractions/, 'boardroom should rerender posts on lens changes');
