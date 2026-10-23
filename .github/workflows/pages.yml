@@ -5,6 +5,7 @@ on:
     branches:
       - master
       - omp/encom-archive-os
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -13,7 +14,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: github-pages
+  group: github-pages-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
   cancel-in-progress: true
 
 jobs:
@@ -26,11 +27,16 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: '24.22.1'
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Verify blog content and runtime
+        run: |
+          node scripts/test-blog-data.mjs
+          node scripts/test-blog-runtime.mjs
 
       - name: Build content and canonical pages
         run: node scripts/publish-blog.mjs --site-url=https://chromedomev12.github.io/encom-boardroom --out=dist
@@ -48,14 +54,17 @@ jobs:
           touch _site/.nojekyll
 
       - name: Configure Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v4
         with:
           path: _site
 
   deploy:
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
