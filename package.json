@@ -54,5 +54,8 @@
   },
   "homepage": "https://chromedomev12.github.io/encom-boardroom/",
   "author": "rscanlon@mit.edu",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.22.1 <25"
+  }
 }
